@@ -2,6 +2,11 @@ package com.example.api
 
 import android.util.Log
 import com.example.BuildConfig
+import com.example.data.Flashcard
+import com.example.data.FlashcardRatingResult
+import com.example.data.MindMapEdge
+import com.example.data.MindMapGraph
+import com.example.data.MindMapNode
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -229,5 +234,322 @@ object GeminiClient {
                 """.trimIndent()
             }
         }
+    }
+
+    /**
+     * Generates a visual JSON graph representation (mind map) from flashcards.
+     */
+    suspend fun generateMindMap(deckName: String, cards: List<Flashcard>): MindMapGraph = withContext(Dispatchers.IO) {
+        if (!isApiKeyAvailable()) {
+            Log.w(TAG, "Gemini API key is not configured. Falling back to local programmatic mind map.")
+            return@withContext getLocalFallbackMindMap(deckName, cards)
+        }
+
+        try {
+            val requestUrl = "$BASE_URL?key=${BuildConfig.GEMINI_API_KEY}"
+
+            val systemPrompt = """
+                You are an expert educational taxonomist and cognitive map generator.
+                Your task is to analyze a set of flashcards (questions and answers) and generate a clean, coherent structural hierarchy or mind map as a visual JSON graph representation.
+
+                You must output a single, well-formed JSON object containing "nodes" and "edges" with the following JSON schema:
+                {
+                  "centralTheme": "A name for the main subject or theme connecting these cards",
+                  "nodes": [
+                    {
+                      "id": "node_id",
+                      "label": "Short descriptive label for the concept (1-3 words)",
+                      "type": "root" | "category" | "concept" | "card_detail",
+                      "description": "A clear, concise 1-sentence definition or summary of this concept."
+                    }
+                  ],
+                  "edges": [
+                    {
+                      "from": "source_node_id",
+                      "to": "target_node_id",
+                      "label": "Relationship name (e.g., 'subconcept', 'prerequisite', 'defines', 'formula')"
+                    }
+                  ]
+                }
+
+                Rules for Graph Construction:
+                1. Identify 1 central Root node (representing the core subject).
+                2. Group the flashcards into logical Categories or High-level Concepts (these will be Category/Concept nodes).
+                3. Connect the Categories/Concepts to the Root node.
+                4. Add specific card details or definitions as child nodes (card_detail type) under their corresponding Categories/Concepts.
+                5. Create relationships (edges) between nodes to show prerequisites, dependencies, or direct subconcepts.
+                6. Make sure all Node IDs are unique.
+                7. Only return valid JSON. Do not include markdown formatting or extra text outside the JSON.
+            """.trimIndent()
+
+            val cardListStr = cards.joinToString("\n") { "- Q: ${it.question} | A: ${it.answer}" }
+            val prompt = """
+                Analyze the following flashcards from the study collection "$deckName" and organize them into an interactive visual hierarchical mind map.
+                
+                Flashcards:
+                $cardListStr
+            """.trimIndent()
+
+            val requestBodyObj = GeminiRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                systemInstruction = Content(parts = listOf(Part(text = systemPrompt))),
+                generationConfig = GenerationConfig(
+                    temperature = 0.2f,
+                    responseMimeType = "application/json"
+                )
+            )
+
+            val jsonAdapter = moshi.adapter(GeminiRequest::class.java)
+            val jsonRequest = jsonAdapter.toJson(requestBodyObj)
+
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val body = jsonRequest.toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errBody = response.body?.string() ?: ""
+                    Log.e(TAG, "API call failed with code ${response.code}: $errBody")
+                    throw Exception("API call failed with code ${response.code}")
+                }
+
+                val responseBody = response.body?.string() ?: throw Exception("Empty response body")
+                val responseAdapter = moshi.adapter(GeminiResponse::class.java)
+                val responseObj = responseAdapter.fromJson(responseBody)
+
+                val rawText = responseObj?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text 
+                    ?: throw Exception("Failed to parse text from Gemini response")
+                
+                // Clean markdown wrapping if present
+                val cleanedText = rawText.trim()
+                    .removePrefix("```json")
+                    .removeSuffix("```")
+                    .trim()
+
+                val mindMapAdapter = moshi.adapter(MindMapGraph::class.java)
+                return@withContext mindMapAdapter.fromJson(cleanedText) 
+                    ?: throw Exception("Failed to deserialize MindMapGraph JSON")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating mind map from Gemini API, falling back.", e)
+            return@withContext getLocalFallbackMindMap(deckName, cards)
+        }
+    }
+
+    /**
+     * Programmatically constructs a beautiful mind map graph offline or as a fallback.
+     */
+    fun getLocalFallbackMindMap(deckName: String, cards: List<Flashcard>): MindMapGraph {
+        val nodes = mutableListOf<MindMapNode>()
+        val edges = mutableListOf<MindMapEdge>()
+        
+        val rootId = "root"
+        nodes.add(MindMapNode(
+            id = rootId,
+            label = deckName,
+            type = "root",
+            description = "Main visual study plan and core concepts for $deckName."
+        ))
+        
+        if (cards.isEmpty()) {
+            nodes.add(MindMapNode("cat1", "Add Cards", "category", "Start by adding active recall cards to expand this map."))
+            nodes.add(MindMapNode("cat2", "Practice", "category", "Test yourself daily with spaced repetition."))
+            edges.add(MindMapEdge(rootId, "cat1", "action"))
+            edges.add(MindMapEdge(rootId, "cat2", "process"))
+        } else {
+            val categories = mutableMapOf<String, MutableList<Flashcard>>()
+            
+            cards.forEachIndexed { index, card ->
+                val keywords = listOf("limit", "derivative", "integral", "carbon", "bond", "acid", "class", "function", "variable", "recursion")
+                var foundCat = "General Concepts"
+                val qLower = card.question.lowercase()
+                for (kw in keywords) {
+                    if (qLower.contains(kw)) {
+                        foundCat = kw.replaceFirstChar { it.uppercase() }
+                        break
+                    }
+                }
+                if (foundCat == "General Concepts") {
+                    foundCat = "Topic ${ (index / 3) + 1 }"
+                }
+                
+                categories.getOrPut(foundCat) { mutableListOf() }.add(card)
+            }
+            
+            var catCounter = 1
+            categories.forEach { (catName, catCards) ->
+                val catId = "cat_$catCounter"
+                nodes.add(MindMapNode(
+                    id = catId,
+                    label = catName,
+                    type = "category",
+                    description = "Key concepts grouped under $catName."
+                ))
+                edges.add(MindMapEdge(from = rootId, to = catId, label = "includes"))
+                
+                catCards.forEachIndexed { cIndex, card ->
+                    val cardNodeId = "card_${card.id}"
+                    val answerNodeId = "ans_${card.id}"
+                    
+                    nodes.add(MindMapNode(
+                        id = cardNodeId,
+                        label = if (card.question.length > 25) card.question.take(22) + "..." else card.question,
+                        type = "concept",
+                        description = card.question
+                    ))
+                    edges.add(MindMapEdge(from = catId, to = cardNodeId, label = "tests"))
+                    
+                    nodes.add(MindMapNode(
+                        id = answerNodeId,
+                        label = "Recall Answer",
+                        type = "card_detail",
+                        description = card.answer
+                    ))
+                    edges.add(MindMapEdge(from = cardNodeId, to = answerNodeId, label = "solution"))
+                }
+                catCounter++
+            }
+        }
+        
+        return MindMapGraph(centralTheme = deckName, nodes = nodes, edges = edges)
+    }
+
+    /**
+     * Generates an Active Recall session summary and identifies knowledge gaps using Gemini.
+     */
+    suspend fun generateActiveRecallSummary(
+        deckName: String,
+        results: List<FlashcardRatingResult>
+    ): String = withContext(Dispatchers.IO) {
+        if (!isApiKeyAvailable()) {
+            Log.w(TAG, "Gemini API key is not configured. Falling back to local simulated summary.")
+            return@withContext getLocalFallbackActiveRecallSummary(deckName, results)
+        }
+
+        try {
+            val requestUrl = "$BASE_URL?key=${BuildConfig.GEMINI_API_KEY}"
+
+            val systemPrompt = """
+                You are an expert cognitive psychologist and personal learning tutor.
+                Your task is to analyze a student's 'Active Recall' flashcard study session results and produce a visually appealing, highly motivational, and structured summary.
+                
+                You should:
+                1. Summarize their performance (how many cards they rated Easy, Good, and Hard).
+                2. Identify specific knowledge gaps based on the questions they struggled with (rated Hard or Good).
+                3. Provide clear, actionable recommendations or study tips to bridge those gaps.
+                
+                Structure your response with clear Markdown headings, bullet points, and high-impact emojis. Keep the tone encouraging, constructive, and highly personalized.
+            """.trimIndent()
+
+            val resultsStr = results.joinToString("\n") { result ->
+                val ratingWord = when (result.rating) {
+                    1 -> "Hard (Struggled)"
+                    2 -> "Good (Got it with effort)"
+                    else -> "Easy (Mastered)"
+                }
+                "- Q: ${result.question}\n  A: ${result.answer}\n  Rating: $ratingWord"
+            }
+
+            val prompt = """
+                Analyze the study session results for the flashcard deck "$deckName".
+                
+                Here are the cards reviewed and the student's rating for each:
+                ${if (resultsStr.isEmpty()) "No cards reviewed." else resultsStr}
+                
+                Please generate the study summary, identify the knowledge gaps, and suggest next steps.
+            """.trimIndent()
+
+            val requestBodyObj = GeminiRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                systemInstruction = Content(parts = listOf(Part(text = systemPrompt))),
+                generationConfig = GenerationConfig(temperature = 0.7f)
+            )
+
+            val jsonAdapter = moshi.adapter(GeminiRequest::class.java)
+            val jsonRequest = jsonAdapter.toJson(requestBodyObj)
+
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val body = jsonRequest.toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errBody = response.body?.string() ?: ""
+                    Log.e(TAG, "API call failed with code ${response.code}: $errBody")
+                    throw Exception("API call failed with code ${response.code}")
+                }
+
+                val responseBody = response.body?.string() ?: throw Exception("Empty response body")
+                val responseAdapter = moshi.adapter(GeminiResponse::class.java)
+                val responseObj = responseAdapter.fromJson(responseBody)
+
+                val generatedText = responseObj?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                return@withContext generatedText ?: throw Exception("Failed to parse text from Gemini response")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating Active Recall summary", e)
+            return@withContext getLocalFallbackActiveRecallSummary(deckName, results)
+        }
+    }
+
+    private fun getLocalFallbackActiveRecallSummary(
+        deckName: String,
+        results: List<FlashcardRatingResult>
+    ): String {
+        val total = results.size
+        val hardCount = results.count { it.rating == 1 }
+        val goodCount = results.count { it.rating == 2 }
+        val easyCount = results.count { it.rating == 3 }
+        
+        val hardCards = results.filter { it.rating == 1 }
+        val goodCards = results.filter { it.rating == 2 }
+        
+        val sb = StringBuilder()
+        sb.append("### 📊 Active Recall Session Summary: **$deckName**\n\n")
+        sb.append("Fantastic job finishing this active study session! Regularly challenging your brain to recall information strengthens your retention and halts memory decay.\n\n")
+        
+        sb.append("#### **Session Breakdown**\n")
+        sb.append("- 🟢 **Easy (Mastered):** $easyCount card(s) — *Strong retention, require less frequent reviews.*\n")
+        sb.append("- 🟡 **Good (Developing):** $goodCount card(s) — *Almost consolidated, review again soon.*\n")
+        sb.append("- 🔴 **Hard (Struggled):** $hardCount card(s) — *High priority knowledge gaps needing attention.*\n\n")
+        
+        sb.append("#### **🔍 Identified Knowledge Gaps**\n")
+        if (hardCards.isEmpty() && goodCards.isEmpty()) {
+            sb.append("🎉 **Perfect Session!** You've mastered all the flashcards in this set during this run. Great job maintaining an optimal recall curve!\n\n")
+        } else {
+            if (hardCards.isNotEmpty()) {
+                sb.append("⚠️ **High Priority Gaps (Struggled):**\n")
+                hardCards.forEach { card ->
+                    sb.append("- **Concept:** \"${card.question}\"\n")
+                    sb.append("  - *Recall Answer:* ${card.answer}\n")
+                }
+                sb.append("\n")
+            }
+            if (goodCards.isNotEmpty()) {
+                sb.append("💡 **Medium Priority Gaps (Needs Reinforcement):**\n")
+                goodCards.forEach { card ->
+                    sb.append("- **Concept:** \"${card.question}\"\n")
+                    sb.append("  - *Recall Answer:* ${card.answer}\n")
+                }
+                sb.append("\n")
+            }
+        }
+        
+        sb.append("#### **🎯 Recommended Next Steps**\n")
+        if (hardCount > 0) {
+            sb.append("1. **Focus on high priority cards:** Review the ${hardCount} cards you marked as 'Hard' tomorrow. Spaced repetition works best when you tackle these right at the edge of forgetting.\n")
+        }
+        sb.append("2. **Use the AI Digital Twin Tutor:** Launch a Socratic chat session for this deck to discuss the underlying concepts, request relatable analogies, and run personalized practice quizzes.\n")
+        sb.append("3. **Visualize the connections:** Generate the Concept Mind Map to visualize how these concepts relate to the rest of the deck.\n")
+        
+        return sb.toString()
     }
 }

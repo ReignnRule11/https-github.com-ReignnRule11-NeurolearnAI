@@ -1,7 +1,14 @@
 package com.example.ui
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.GeminiClient
@@ -10,8 +17,16 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 // --- UI Navigation & Screen States ---
+
+sealed interface MindMapState {
+    object Idle : MindMapState
+    object Loading : MindMapState
+    data class Success(val graph: MindMapGraph) : MindMapState
+    data class Error(val message: String) : MindMapState
+}
 
 sealed interface Screen {
     object Login : Screen
@@ -23,7 +38,7 @@ sealed interface Screen {
     object Review : Screen
     object Progress : Screen
     object Profile : Screen
-    data class TutorChat(val conceptId: String) : Screen
+    data class TutorChat(val conceptId: String? = null, val deckId: String? = null) : Screen
     data class PdfIntelligence(val conceptId: String? = null) : Screen
     data class QuizGame(val conceptId: String, val difficulty: String) : Screen
 }
@@ -91,6 +106,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _generatedNotes = MutableStateFlow<ProcessedNoteData?>(null)
     val generatedNotes: StateFlow<ProcessedNoteData?> = _generatedNotes.asStateFlow()
 
+    // --- Mind Map State ---
+    private val _mindMapState = MutableStateFlow<MindMapState>(MindMapState.Idle)
+    val mindMapState: StateFlow<MindMapState> = _mindMapState.asStateFlow()
+
     // Active Quiz State
     private val _activeQuizQuestions = MutableStateFlow<List<QuizQuestion>>(emptyList())
     val activeQuizQuestions: StateFlow<List<QuizQuestion>> = _activeQuizQuestions.asStateFlow()
@@ -107,6 +126,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _aiPlannerAdvice = MutableStateFlow<String?>(null)
     val aiPlannerAdvice: StateFlow<String?> = _aiPlannerAdvice.asStateFlow()
 
+    // Active Recall Session Summary
+    private val _activeRecallSummary = MutableStateFlow<String?>(null)
+    val activeRecallSummary: StateFlow<String?> = _activeRecallSummary.asStateFlow()
+
+    private val _isGeneratingSummary = MutableStateFlow(false)
+    val isGeneratingSummary: StateFlow<Boolean> = _isGeneratingSummary.asStateFlow()
+
+    fun clearActiveRecallSummary() {
+        _activeRecallSummary.value = null
+    }
+
+    fun generateActiveRecallSessionSummary(deckName: String, results: List<FlashcardRatingResult>) {
+        if (results.isEmpty()) return
+        viewModelScope.launch {
+            _isGeneratingSummary.value = true
+            _activeRecallSummary.value = null
+            try {
+                val summary = GeminiClient.generateActiveRecallSummary(deckName, results)
+                _activeRecallSummary.value = summary
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error generating session summary", e)
+                showToast("Failed to generate summary: ${e.message}")
+            } finally {
+                _isGeneratingSummary.value = false
+            }
+        }
+    }
+
+    private val _activeStudyAlert = MutableStateFlow<StudyTask?>(null)
+    val activeStudyAlert: StateFlow<StudyTask?> = _activeStudyAlert.asStateFlow()
+
+    private val notifiedTaskIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
     init {
         // Evaluate if user is logged in and has completed onboarding
         viewModelScope.launch {
@@ -119,6 +171,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _currentScreen.value = Screen.OnboardingWelcome
             }
         }
+        startScheduledTaskChecker()
     }
 
     fun loginWithEmail(email: String, password: String, isSignUp: Boolean, onResult: (Boolean) -> Unit) {
@@ -491,6 +544,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newStatus = !task.isCompleted
             taskDao.updateTaskStatus(task.id, newStatus)
             
+            // Sync status to Firestore
+            firestore?.collection("study_tasks")?.document(task.id.toString())?.update("isCompleted", newStatus)
+            
             if (newStatus) {
                 awardXp(task.xpAwarded)
                 // Propagate a micro increase in mastery for studying the concept
@@ -499,6 +555,212 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 deductXp(task.xpAwarded)
                 propagateMastery(task.conceptId, -0.05f)
+            }
+        }
+    }
+
+    // --- Intelligent Study Scheduler & Firestore Integration ---
+
+    fun generateIntelligentStudySchedulerPlan() {
+        viewModelScope.launch {
+            _isAILoading.value = true
+            try {
+                val profileVal = profile.value ?: LearnerProfile()
+                val decksList = allDecks.value
+                val cardsList = allFlashcards.value
+                val concepts = allConcepts.value
+
+                // 1. Clear current study tasks from local DB
+                taskDao.clearAllTasks()
+
+                // 2. Query deck review statuses
+                val decksWithDueCounts = decksList.map { deck ->
+                    val dueCount = cardsList.count { it.deckId == deck.id && it.nextReviewDate <= System.currentTimeMillis() }
+                    val totalCount = cardsList.count { it.deckId == deck.id }
+                    Triple(deck, dueCount, totalCount)
+                }
+
+                val studyTasks = mutableListOf<StudyTask>()
+                var taskIndex = 0
+
+                // Add tasks for decks that have due cards
+                decksWithDueCounts.forEach { (deck, dueCount, totalCount) ->
+                    if (dueCount > 0) {
+                        val taskName = "Review Deck '${deck.name}' ($dueCount cards due)"
+                        val task = StudyTask(
+                            conceptId = "deck_${deck.id}",
+                            conceptName = taskName,
+                            subject = "Spaced Recall",
+                            dueDate = System.currentTimeMillis() + (taskIndex * 60 * 1000),
+                            isCompleted = false,
+                            xpAwarded = 10 + (dueCount * 2).coerceAtMost(30),
+                            deckId = deck.id,
+                            taskType = "deck"
+                        )
+                        studyTasks.add(task)
+                        taskIndex++
+                    }
+                }
+
+                // If no decks have due cards, suggest studying/learning, or add standard tasks
+                if (studyTasks.isEmpty()) {
+                    decksList.forEach { deck ->
+                        val cardCount = cardsList.count { it.deckId == deck.id }
+                        val taskName = if (cardCount == 0) {
+                            "Add flashcards to deck '${deck.name}'"
+                        } else {
+                            "Study deck '${deck.name}' (All caught up! ✨)"
+                        }
+                        val task = StudyTask(
+                            conceptId = "deck_${deck.id}",
+                            conceptName = taskName,
+                            subject = "Continuous Learning",
+                            dueDate = System.currentTimeMillis() + (taskIndex * 60 * 1000),
+                            isCompleted = false,
+                            xpAwarded = 15,
+                            deckId = deck.id,
+                            taskType = "deck"
+                        )
+                        studyTasks.add(task)
+                        taskIndex++
+                    }
+                }
+
+                // Fill up with weak concepts if available
+                val weakConcepts = concepts.filter { it.understandingScore < 0.6f }.take(2)
+                weakConcepts.forEach { concept ->
+                    val task = StudyTask(
+                        conceptId = concept.id,
+                        conceptName = "Study gap: ${concept.name}",
+                        subject = concept.subject,
+                        dueDate = System.currentTimeMillis() + (taskIndex * 60 * 1000),
+                        isCompleted = false,
+                        xpAwarded = if (concept.difficulty == "Hard") 25 else 15,
+                        deckId = null,
+                        taskType = "concept"
+                    )
+                    studyTasks.add(task)
+                    taskIndex++
+                }
+
+                // 3. Save tasks to local Room Database
+                taskDao.insertAllTasks(studyTasks)
+
+                // 4. Generate Socratic Twin advisor explanation using Gemini!
+                val dueDecksSummary = decksWithDueCounts.filter { it.second > 0 }
+                val prompt = """
+                    As the Socratic Study Twin Agent, analyze this study status:
+                    - Learner: ${profileVal.name}
+                    - Study Goal: ${profileVal.learningGoals}
+                    - Available Daily Time: ${profileVal.availableStudyTime} mins
+                    - Flashcard Decks status:
+                    ${decksWithDueCounts.joinToString("\n") { "  * Deck '${it.first.name}': ${it.second} cards due out of ${it.third} total." }}
+                    - Weak Concept Gaps:
+                    ${weakConcepts.joinToString("\n") { "  * ${it.name}: ${(it.understandingScore * 100).toInt()}% understanding" }}
+
+                    Provide an actionable 2-3 paragraph study schedule advisor response:
+                    - Paragraph 1: Analyze memory decay in their flashcard decks and state which deck needs most immediate active recall attention.
+                    - Paragraph 2: Map out how they should allocate their ${profileVal.availableStudyTime} minutes today (e.g. Pomodoro intervals between due decks and concepts) for peak retention.
+                    - Paragraph 3: A brief, wise, and Socratic encouraging word from their study twin.
+
+                    Keep the response highly strategic, warm, professional, and do not use markdown lists. Just write clean, cohesive paragraphs.
+                """.trimIndent()
+
+                try {
+                    val response = GeminiClient.generate(prompt, "You are a warm, wise, and highly analytical Socratic Study Twin.")
+                    _aiPlannerAdvice.value = response
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to fetch intelligent study plan advice from Gemini", e)
+                    val mainTarget = dueDecksSummary.maxByOrNull { it.second }?.first?.name ?: "your active decks"
+                    _aiPlannerAdvice.value = "Memory decay analysis suggests starting with the '$mainTarget' deck which has the most pending card reviews. Set a 15-minute timer for intense active recall, then spend 10 minutes filling the conceptual gaps detected in your weak learning modules."
+                }
+
+                // 5. Save/Sync all study tasks to Firestore cloud collection "study_tasks"
+                syncStudyTasksToFirestore()
+
+                showToast("Intelligent Study Plan Generated & Synced to Firestore!")
+            } catch (e: Exception) {
+                Log.e(TAG, "Scheduler plan generation failed", e)
+                showToast("Scheduler error: ${e.message}")
+            } finally {
+                _isAILoading.value = false
+            }
+        }
+    }
+
+    fun syncStudyTasksToFirestore() {
+        val db = firestore
+        if (db == null) {
+            Log.w("neurolearn", "Firestore is not configured. Saved study plan locally.")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val currentTasks = taskDao.getAllTasks().first()
+                for (task in currentTasks) {
+                    val taskMap = hashMapOf(
+                        "id" to task.id,
+                        "conceptId" to task.conceptId,
+                        "conceptName" to task.conceptName,
+                        "subject" to task.subject,
+                        "dueDate" to task.dueDate,
+                        "isCompleted" to task.isCompleted,
+                        "xpAwarded" to task.xpAwarded,
+                        "deckId" to task.deckId,
+                        "taskType" to task.taskType
+                    )
+                    db.collection("study_tasks").document(task.id.toString()).set(taskMap)
+                }
+                Log.d("neurolearn", "Synced study tasks to Firestore successfully!")
+            } catch (e: Exception) {
+                Log.e("neurolearn", "Failed to sync study tasks to Firestore", e)
+            }
+        }
+    }
+
+    fun pullStudyTasksFromFirestore() {
+        val db = firestore
+        if (db == null) {
+            Log.w("neurolearn", "Firestore not available to pull study tasks.")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                db.collection("study_tasks").get().addOnSuccessListener { snapshot ->
+                    viewModelScope.launch {
+                        if (snapshot != null && !snapshot.isEmpty) {
+                            taskDao.clearAllTasks()
+                            for (doc in snapshot.documents) {
+                                val id = doc.getLong("id")?.toInt() ?: continue
+                                val conceptId = doc.getString("conceptId") ?: ""
+                                val conceptName = doc.getString("conceptName") ?: ""
+                                val subject = doc.getString("subject") ?: ""
+                                val dueDate = doc.getLong("dueDate") ?: System.currentTimeMillis()
+                                val isCompleted = doc.getBoolean("isCompleted") ?: false
+                                val xpAwarded = doc.getLong("xpAwarded")?.toInt() ?: 15
+                                val deckId = doc.getString("deckId")
+                                val taskType = doc.getString("taskType") ?: "concept"
+
+                                taskDao.insertTask(
+                                    StudyTask(
+                                        id = id,
+                                        conceptId = conceptId,
+                                        conceptName = conceptName,
+                                        subject = subject,
+                                        dueDate = dueDate,
+                                        isCompleted = isCompleted,
+                                        xpAwarded = xpAwarded,
+                                        deckId = deckId,
+                                        taskType = taskType
+                                    )
+                                )
+                            }
+                            Log.d("neurolearn", "Pulled study tasks from Firestore successfully!")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("neurolearn", "Failed to pull study tasks from Firestore", e)
             }
         }
     }
@@ -583,6 +845,89 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             taskDao.deleteTaskById(taskId)
             showToast("Removed task from today's study plan.")
+        }
+    }
+
+    private fun startScheduledTaskChecker() {
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(5000) // check every 5 seconds
+                val now = System.currentTimeMillis()
+                val tasks = studyTasks.value
+                val dueIncompleteTask = tasks.find { !it.isCompleted && it.dueDate <= now && it.id !in notifiedTaskIds }
+                if (dueIncompleteTask != null) {
+                    notifiedTaskIds.add(dueIncompleteTask.id)
+                    _activeStudyAlert.value = dueIncompleteTask
+                    triggerSystemNotification(dueIncompleteTask)
+                }
+            }
+        }
+    }
+
+    private fun triggerSystemNotification(task: StudyTask) {
+        try {
+            val context = getApplication<Application>()
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            val channelId = "scheduled_study_sessions"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    "Scheduled Study Sessions",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Notifies when it's time for a scheduled study session"
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+            
+            // Open the app when clicked
+            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm) // simple standard built-in alarm icon
+                .setContentTitle("⏰ Study Session Due!")
+                .setContentText(task.conceptName)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                
+            notificationManager.notify(task.id, builder.build())
+            
+            // Also show a toast so it's super visible
+            showToast("⏰ Study Alarm: It is time to study \"${task.conceptName}\"!")
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Failed to trigger system notification", e)
+        }
+    }
+
+    fun dismissActiveStudyAlert() {
+        _activeStudyAlert.value = null
+    }
+
+    fun scheduleStudySession(conceptName: String, subject: String, minutesFromNow: Int) {
+        viewModelScope.launch {
+            val task = StudyTask(
+                conceptId = "custom_${UUID.randomUUID().toString().take(6)}",
+                conceptName = conceptName,
+                subject = subject,
+                dueDate = System.currentTimeMillis() + (minutesFromNow * 60L * 1000L),
+                isCompleted = false,
+                xpAwarded = 20,
+                taskType = "custom"
+            )
+            taskDao.insertTask(task)
+            syncStudyTasksToFirestore()
+            showToast("Scheduled '$conceptName' study session in $minutesFromNow minutes!")
         }
     }
 
@@ -677,9 +1022,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createDeck(name: String, description: String) {
+    fun createDeck(name: String, description: String, subject: String = "General") {
         viewModelScope.launch {
-            val deck = FlashcardDeck(name = name, description = description)
+            val deck = FlashcardDeck(name = name, description = description, subject = subject)
             deckDao.insertDeck(deck)
             awardXp(15)
             showToast("Deck '$name' created locally!")
@@ -696,6 +1041,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
             }
         }
+    }
+
+    fun generateMindMapForDeck(deckName: String, deckId: String?) {
+        viewModelScope.launch {
+            _mindMapState.value = MindMapState.Loading
+            try {
+                val cards = allFlashcards.value.let { list ->
+                    if (deckId != null) list.filter { it.deckId == deckId } else list
+                }
+                val result = GeminiClient.generateMindMap(deckName, cards)
+                _mindMapState.value = MindMapState.Success(result)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to generate mind map", e)
+                _mindMapState.value = MindMapState.Error(e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    fun clearMindMap() {
+        _mindMapState.value = MindMapState.Idle
     }
 
     fun deleteDeck(deckId: String) {
@@ -722,14 +1087,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addCustomFlashcard(deckId: String, question: String, answer: String, difficulty: String = "Medium") {
+    fun addCustomFlashcard(deckId: String, question: String, answer: String, difficulty: String = "Medium", tags: String = "") {
         viewModelScope.launch {
             val card = Flashcard(
                 conceptId = "custom",
                 question = question,
                 answer = answer,
                 difficulty = difficulty,
-                deckId = deckId
+                deckId = deckId,
+                tags = tags
             )
             flashcardDao.insertCard(card)
             awardXp(5)
@@ -759,6 +1125,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     db.collection("flashcards").document(card.id.toString()).set(card)
                 }
                 Log.d("neurolearn", "Synced all decks and cards to Firestore successfully!")
+                
+                // Automatically sync study tasks too
+                syncStudyTasksToFirestore()
             } catch (e: Exception) {
                 Log.e("neurolearn", "Sync to Firestore failed", e)
             }
@@ -780,8 +1149,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             val id = doc.getString("id") ?: continue
                             val name = doc.getString("name") ?: ""
                             val description = doc.getString("description") ?: ""
+                            val subject = doc.getString("subject") ?: "General"
                             val createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
-                            deckDao.insertDeck(FlashcardDeck(id, name, description, createdAt))
+                            deckDao.insertDeck(FlashcardDeck(id, name, description, subject, createdAt))
                         }
                     }
                 }.addOnFailureListener { e ->
@@ -802,6 +1172,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             val nextReviewDate = doc.getLong("nextReviewDate") ?: System.currentTimeMillis()
                             val lastReviewed = doc.getLong("lastReviewed") ?: 0L
                             val deckId = doc.getString("deckId") ?: "default"
+                            val tags = doc.getString("tags") ?: ""
                             
                             flashcardDao.insertCard(
                                 Flashcard(
@@ -815,10 +1186,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     repetitions = repetitions,
                                     nextReviewDate = nextReviewDate,
                                     lastReviewed = lastReviewed,
-                                    deckId = deckId
+                                    deckId = deckId,
+                                    tags = tags
                                 )
                             )
                         }
+                        
+                        // Automatically pull study tasks too
+                        pullStudyTasksFromFirestore()
+                        
                         showToast("Successfully synced from Firestore Cloud!")
                     }
                 }.addOnFailureListener { e ->
@@ -898,7 +1274,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startTutorSession(conceptId: String) {
         _activeChatSession.value = "session_$conceptId"
-        navigateTo(Screen.TutorChat(conceptId))
+        navigateTo(Screen.TutorChat(conceptId = conceptId))
 
         // Preseed a welcoming tutor prompt if chat history is empty
         viewModelScope.launch {
@@ -922,16 +1298,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessageToTutor(conceptId: String, userText: String) {
+    fun startDeckTutorSession(deckId: String) {
+        _activeChatSession.value = "deck_session_$deckId"
+        navigateTo(Screen.TutorChat(deckId = deckId))
+
+        // Preseed a welcoming tutor prompt if chat history is empty
+        viewModelScope.launch {
+            val existing = chatDao.getMessagesForSession("deck_session_$deckId").firstOrNull()
+            if (existing.isNullOrEmpty()) {
+                val decks = deckDao.getAllDecks().firstOrNull() ?: emptyList()
+                val deck = decks.find { it.id == deckId } ?: return@launch
+                val cards = flashcardDao.getAllCards().firstOrNull() ?: emptyList()
+                val deckCards = cards.filter { it.deckId == deckId }
+                val cardsSummary = if (deckCards.isNotEmpty()) {
+                    "This deck contains ${deckCards.size} flashcards. Here are some key questions in this deck: " + 
+                    deckCards.take(4).joinToString(", ") { "'${it.question}'" } + (if (deckCards.size > 4) " and others." else ".")
+                } else {
+                    "This deck is currently empty. You can add flashcards to study, or we can discuss and create some together right now!"
+                }
+                
+                val tutorPrompt = """
+                    Welcome, Learner! I am your Socratic AI Digital Twin tutor, here to guide you through your flashcard deck **${deck.name}**. 
+                    
+                    $cardsSummary
+                    
+                    I am here to quiz you, explain any of these flashcards with custom analogies, or help you understand the core material. What would you like to focus on first?
+                """.trimIndent()
+                
+                chatDao.insertMessage(
+                    ChatMessage(
+                        sessionId = "deck_session_$deckId",
+                        role = "model",
+                        text = tutorPrompt
+                    )
+                )
+            }
+        }
+    }
+
+    fun sendMessageToTutor(conceptId: String?, deckId: String?, userText: String) {
         if (userText.isBlank()) return
-        val sessionId = "session_$conceptId"
+        val sessionId = if (deckId != null) "deck_session_$deckId" else "session_$conceptId"
 
         viewModelScope.launch {
             // Save user message
             chatDao.insertMessage(ChatMessage(sessionId = sessionId, role = "user", text = userText))
             _isAILoading.value = true
 
-            val concept = conceptDao.getConceptById(conceptId) ?: return@launch
             val userProfile = profileDao.getProfileSync() ?: LearnerProfile()
 
             // Fetch chat history for context
@@ -945,22 +1358,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> "You are 'The Socratic Mentor' digital learning twin. Your tone is thoughtful, reflective, and guided by questioning. Lead the student to answers using scaffolded hints and interactive dialogue instead of giving solutions outright."
             }
 
-            val systemPrompt = """
-                $twinPersona
-                You are tutoring the student on the concept "${concept.name}" (Subject: ${concept.subject}).
-                Your target student has a learning style of "${userProfile.learningStyle}" and target goals of "${userProfile.learningGoals}".
-                Your pedagogical principle: Teach before giving answers. Use active recall, step-by-step guidance, and analogies.
-                Be warm, supportive, and extremely precise.
+            val systemPrompt = if (deckId != null) {
+                val decks = deckDao.getAllDecks().firstOrNull() ?: emptyList()
+                val deck = decks.find { it.id == deckId }
+                val cards = flashcardDao.getAllCards().firstOrNull() ?: emptyList()
+                val deckCards = cards.filter { it.deckId == deckId }
+                val cardsDetail = if (deckCards.isNotEmpty()) {
+                    deckCards.joinToString("\n") { "- Q: ${it.question} | A: ${it.answer}" }
+                } else {
+                    "No cards in this deck yet."
+                }
                 
-                CRITICAL INSTRUCTION: If you feel the student has demonstrated good understanding of the concept or completed an exercise correctly, append the following tag to the very end of your response to update their Digital Learning Twin:
-                [MASTERY_DELTA: +8%, CONFIDENCE_DELTA: +10%]
-                If they are struggling or getting wrong answers, append:
-                [MASTERY_DELTA: -4%, CONFIDENCE_DELTA: -5%]
-                If it's just regular conversation or explanation, you don't need to append any delta.
-            """.trimIndent()
+                """
+                    $twinPersona
+                    You are tutoring the student on their flashcard deck named "${deck?.name ?: "Flashcards"}".
+                    Here are all the flashcards in this deck that you have full knowledge of:
+                    $cardsDetail
+                    
+                    Your target student has a learning style of "${userProfile.learningStyle}" and target goals of "${userProfile.learningGoals}".
+                    Your pedagogical principle: Help them master the deck. You can quiz them on these flashcards, explain the answers, provide real-world analogies, or guide them step-by-step through any questions they have.
+                    Be warm, supportive, extremely precise, and interactive. Encourage active recall!
+                """.trimIndent()
+            } else {
+                val concept = conceptDao.getConceptById(conceptId ?: "") ?: return@launch
+                """
+                    $twinPersona
+                    You are tutoring the student on the concept "${concept.name}" (Subject: ${concept.subject}).
+                    Your target student has a learning style of "${userProfile.learningStyle}" and target goals of "${userProfile.learningGoals}".
+                    Your pedagogical principle: Teach before giving answers. Use active recall, step-by-step guidance, and analogies.
+                    Be warm, supportive, and extremely precise.
+                    
+                    CRITICAL INSTRUCTION: If you feel the student has demonstrated good understanding of the concept or completed an exercise correctly, append the following tag to the very end of your response to update their Digital Learning Twin:
+                    [MASTERY_DELTA: +8%, CONFIDENCE_DELTA: +10%]
+                    If they are struggling or getting wrong answers, append:
+                    [MASTERY_DELTA: -4%, CONFIDENCE_DELTA: -5%]
+                    If it's just regular conversation or explanation, you don't need to append any delta.
+                """.trimIndent()
+            }
+
+            val contextHeader = if (deckId != null) {
+                val decks = deckDao.getAllDecks().firstOrNull() ?: emptyList()
+                val deck = decks.find { it.id == deckId }
+                "Current deck: ${deck?.name ?: "Flashcards"}"
+            } else {
+                val concept = conceptDao.getConceptById(conceptId ?: "")
+                "Current topic: ${concept?.name ?: "Topic"}"
+            }
 
             val prompt = """
-                Current topic: ${concept.name}
+                $contextHeader
                 Student Profile: ${userProfile.subjects} | Diagnostic Level: ${userProfile.diagnosticScore}
                 
                 Conversation History:
@@ -973,7 +1419,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val response = GeminiClient.generate(prompt, systemPrompt)
                 
                 // Parse out mastery or confidence deltas if present
-                val cleanedResponse = parseDeltasAndUpdateMastery(conceptId, response)
+                val cleanedResponse = if (conceptId != null) {
+                    parseDeltasAndUpdateMastery(conceptId, response)
+                } else {
+                    response.trim()
+                }
                 
                 chatDao.insertMessage(ChatMessage(sessionId = sessionId, role = "model", text = cleanedResponse))
                 awardXp(5)
@@ -1017,10 +1467,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return cleanResponse.trim()
     }
 
-    fun clearTutorChat(conceptId: String) {
+    fun clearTutorChat(conceptId: String?, deckId: String?) {
+        val sessionId = if (deckId != null) "deck_session_$deckId" else "session_$conceptId"
         viewModelScope.launch {
-            chatDao.clearSession("session_$conceptId")
-            startTutorSession(conceptId)
+            chatDao.clearSession(sessionId)
+            if (deckId != null) {
+                startDeckTutorSession(deckId)
+            } else if (conceptId != null) {
+                startTutorSession(conceptId)
+            }
         }
     }
 
@@ -1487,6 +1942,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _adminSettings.value = AdminSettings(temperature, maxTokens, safetyLevel)
         logSystemAction("Admin modified system AI parameters: temp=$temperature, maxTokens=$maxTokens, safety=$safetyLevel")
         showToast("AI system parameters modified!")
+    }
+
+    fun updateStreak(streak: Int) {
+        viewModelScope.launch {
+            val existing = profileDao.getProfileSync() ?: LearnerProfile()
+            val updated = existing.copy(streak = streak)
+            profileDao.insertOrUpdateProfile(updated)
+            logSystemAction("Simulated study streak set to $streak days")
+            showToast("Streak updated to $streak days!")
+        }
+    }
+
+    fun simulateMasteredCards(count: Int) {
+        viewModelScope.launch {
+            val existingCards = flashcardDao.getAllCards().first()
+            val masteredCount = existingCards.filter { it.repetitions >= 1 }.size
+            val needed = count - masteredCount
+            if (needed <= 0) {
+                showToast("Already have $masteredCount mastered cards!")
+                return@launch
+            }
+            
+            // First, let's mark existing unmastered cards as mastered
+            val updatedExisting = existingCards.filter { it.repetitions < 1 }.take(needed).map {
+                it.copy(repetitions = 1, intervalDays = 3, easeFactor = 2.5f)
+            }
+            for (card in updatedExisting) {
+                flashcardDao.insertCard(card)
+            }
+            
+            val remainingNeeded = needed - updatedExisting.size
+            if (remainingNeeded > 0) {
+                // We need to insert new dummy cards to reach the target count
+                val newCards = (1..remainingNeeded).map { i ->
+                    Flashcard(
+                        conceptId = "functions",
+                        question = "Simulated Mastery Question #$i",
+                        answer = "Simulated Mastery Answer #$i",
+                        difficulty = "Easy",
+                        repetitions = 1,
+                        intervalDays = 3,
+                        easeFactor = 2.5f,
+                        deckId = "default"
+                    )
+                }
+                flashcardDao.insertAllCards(newCards)
+            }
+            
+            // Also let's award some XP for mastering cards to keep level synced
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val addedXp = remainingNeeded * 10 + updatedExisting.size * 10
+            val newXp = currentProfile.xp + addedXp
+            val newLevel = (newXp / 100) + 1
+            profileDao.insertOrUpdateProfile(currentProfile.copy(xp = newXp, level = newLevel))
+            
+            logSystemAction("Simulated $count mastered cards. Added $addedXp XP.")
+            showToast("Successfully simulated $count mastered cards!")
+        }
     }
 }
 

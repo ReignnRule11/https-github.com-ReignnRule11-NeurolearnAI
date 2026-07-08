@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -46,18 +47,62 @@ import com.example.data.ChatMessage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
+fun TutorScreen(viewModel: MainViewModel, conceptId: String? = null, deckId: String? = null) {
     val profile by viewModel.profile.collectAsState()
     val messages by viewModel.activeChatMessages.collectAsState()
     val isLoading by viewModel.isAILoading.collectAsState()
     val concepts by viewModel.allConcepts.collectAsState()
+    val decks by viewModel.allDecks.collectAsState()
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     var showAvatarCustomizer by remember { mutableStateOf(false) }
     var showVoiceSession by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val inlineSpeechState = remember(context) {
+        SpeechRecognizerState(
+            context = context,
+            onTranscriptionUpdated = { text ->
+                if (text.isNotBlank()) {
+                    inputText = text
+                }
+            },
+            onErrorOccurred = { err ->
+                viewModel.showToast(err)
+            }
+        )
+    }
+
+    DisposableEffect(inlineSpeechState) {
+        onDispose {
+            inlineSpeechState.destroy()
+        }
+    }
+
+    // Dynamic Live Transcription binding
+    LaunchedEffect(inlineSpeechState.transcription) {
+        if (inlineSpeechState.isListening && inlineSpeechState.transcription.isNotBlank()) {
+            inputText = inlineSpeechState.transcription
+        }
+    }
+
+    // Inline voice recording permission launcher
+    val inlinePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                inlineSpeechState.transcription = ""
+                inlineSpeechState.startListening()
+            } else {
+                viewModel.showToast("Microphone permission is required for voice dictation.")
+            }
+        }
+    )
+
     val concept = concepts.find { it.id == conceptId }
-    val conceptName = concept?.name ?: "Topic"
+    val deck = decks.find { it.id == deckId }
+    val entityName = deck?.name ?: concept?.name ?: "Topic"
+    val tutorSubtitle = if (deckId != null) "Digital Twin Deck Tutor" else "Socratic AI Tutor"
 
     // Auto-scroll chat to latest message
     LaunchedEffect(messages.size) {
@@ -72,11 +117,11 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
                 title = {
                     Column {
                         Text(
-                            text = conceptName,
+                            text = entityName,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                         Text(
-                            text = "Socratic AI Tutor",
+                            text = tutorSubtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -84,7 +129,13 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
                 },
                 navigationIcon = {
                     IconButton(
-                        onClick = { viewModel.navigateTo(Screen.Learn) },
+                        onClick = { 
+                            if (deckId != null) {
+                                viewModel.navigateTo(Screen.Review)
+                            } else {
+                                viewModel.navigateTo(Screen.Learn)
+                            }
+                        },
                         modifier = Modifier.testTag("tutor_back_button")
                     ) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -98,7 +149,7 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
                         Icon(imageVector = Icons.Default.Face, contentDescription = "Customize AI Twin", tint = MaterialTheme.colorScheme.primary)
                     }
                     IconButton(
-                        onClick = { viewModel.clearTutorChat(conceptId) },
+                        onClick = { viewModel.clearTutorChat(conceptId, deckId) },
                         modifier = Modifier.testTag("tutor_clear_button")
                     ) {
                         Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = "Clear Chat History", tint = MaterialTheme.colorScheme.error)
@@ -190,18 +241,27 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf(
-                    "Explain this with an analogy",
-                    "Solve a step-by-step problem",
-                    "Quiz me on this concept"
-                ).forEach { suggestion ->
+                val suggestions = if (deckId != null) {
+                    listOf(
+                        "Quiz me on this deck",
+                        "Explain a card with an analogy",
+                        "Give me a random question"
+                    )
+                } else {
+                    listOf(
+                        "Explain this with an analogy",
+                        "Solve a step-by-step problem",
+                        "Quiz me on this concept"
+                    )
+                }
+                suggestions.forEach { suggestion ->
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
                             .clickable {
                                 inputText = suggestion
-                                viewModel.sendMessageToTutor(conceptId, suggestion)
+                                viewModel.sendMessageToTutor(conceptId, deckId, suggestion)
                                 inputText = ""
                             }
                             .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -224,20 +284,77 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                val inlineMicColor = if (inlineSpeechState.isListening) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                }
+
+                val infiniteTransition = rememberInfiniteTransition(label = "inline_mic_pulse")
+                val micScale by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = if (inlineSpeechState.isListening) 1.25f else 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(750, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "micScale"
+                )
+
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
-                    placeholder = { Text("Ask your Socratic Tutor anything...") },
+                    placeholder = { 
+                        Text(
+                            text = if (inlineSpeechState.isListening) "Listening... Speak now!" else "Ask your Socratic Tutor anything..."
+                        ) 
+                    },
                     trailingIcon = {
-                        IconButton(
-                            onClick = { showVoiceSession = true },
-                            modifier = Modifier.testTag("tutor_mic_button")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 4.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Mic,
-                                contentDescription = "Start Verbal Q&A Session",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            // Inline Dictation / Speech-to-text Button
+                            IconButton(
+                                onClick = {
+                                    val hasPermission = ContextCompat.checkSelfPermission(
+                                        context,
+                                        android.Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    
+                                    if (inlineSpeechState.isListening) {
+                                        inlineSpeechState.stopListening()
+                                    } else {
+                                        inlineSpeechState.transcription = ""
+                                        if (hasPermission) {
+                                            inlineSpeechState.startListening()
+                                        } else {
+                                            inlinePermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .testTag("tutor_inline_mic_button")
+                                    .scale(micScale)
+                            ) {
+                                Icon(
+                                    imageVector = if (inlineSpeechState.isListening) Icons.Default.Stop else Icons.Default.Mic,
+                                    contentDescription = if (inlineSpeechState.isListening) "Stop dictation" else "Speak question (voice-to-text)",
+                                    tint = inlineMicColor
+                                )
+                            }
+
+                            // Full Immersive Hands-Free Voice Dialogue Button
+                            IconButton(
+                                onClick = { showVoiceSession = true },
+                                modifier = Modifier.testTag("tutor_mic_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = "Start Immersive Socratic Voice Session",
+                                    tint = MaterialTheme.colorScheme.secondary
+                                )
+                            }
                         }
                     },
                     modifier = Modifier
@@ -245,8 +362,10 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
                         .testTag("tutor_text_input"),
                     shape = RoundedCornerShape(20.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        focusedContainerColor = if (inlineSpeechState.isListening) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = if (inlineSpeechState.isListening) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = if (inlineSpeechState.isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = if (inlineSpeechState.isListening) MaterialTheme.colorScheme.error.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
                     )
                 )
 
@@ -254,7 +373,7 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
                     onClick = {
                         val txt = inputText
                         if (txt.isNotBlank()) {
-                            viewModel.sendMessageToTutor(conceptId, txt)
+                            viewModel.sendMessageToTutor(conceptId, deckId, txt)
                             inputText = ""
                         }
                     },
@@ -285,11 +404,11 @@ fun TutorScreen(viewModel: MainViewModel, conceptId: String) {
 
             if (showVoiceSession) {
                 VoiceSessionDialog(
-                    conceptName = conceptName,
+                    conceptName = entityName,
                     twinAvatar = profile?.selectedTwinAvatar ?: "socratic",
                     onDismiss = { showVoiceSession = false },
                     onSendSpeech = { spokenText ->
-                        viewModel.sendMessageToTutor(conceptId, spokenText)
+                        viewModel.sendMessageToTutor(conceptId, deckId, spokenText)
                         showVoiceSession = false
                     }
                 )

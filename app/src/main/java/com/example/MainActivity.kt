@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.MainViewModel
@@ -41,12 +42,93 @@ fun NeuroLearnAppShell() {
     val toastMessage by viewModel.uiToast.collectAsState()
     val context = LocalContext.current
 
+    val activeStudyAlert by viewModel.activeStudyAlert.collectAsState()
+
     // Display native android toasts when requested by the ViewModel
     LaunchedEffect(toastMessage) {
         toastMessage?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearToast()
         }
+    }
+
+    if (activeStudyAlert != null) {
+        val alertTask = activeStudyAlert!!
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissActiveStudyAlert() },
+            title = {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Alarm,
+                        contentDescription = "Alert",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "⏰ Study Alarm Due!",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Based on your Socratic Twin's spacing schedule, it's time to study:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = alertTask.conceptName,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Subject: ${alertTask.subject}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Completing this session awards +${alertTask.xpAwarded} XP to boost your avatar's baseline cognitive intelligence.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.dismissActiveStudyAlert()
+                        if (alertTask.taskType == "deck" && alertTask.deckId != null) {
+                            viewModel.navigateTo(Screen.Review)
+                        } else {
+                            viewModel.navigateTo(Screen.Learn)
+                        }
+                    },
+                    modifier = Modifier.testTag("alert_start_button")
+                ) {
+                    Text("Start Now 🧠")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissActiveStudyAlert() },
+                    modifier = Modifier.testTag("alert_dismiss_button")
+                ) {
+                    Text("Snooze")
+                }
+            },
+            modifier = Modifier.testTag("study_due_alert_dialog")
+        )
     }
 
     // Determine if bottom navigation is shown on the current screen
@@ -124,7 +206,7 @@ fun NeuroLearnAppShell() {
                     Screen.Review -> ReviewScreen(viewModel = viewModel)
                     Screen.Progress -> ProgressScreen(viewModel = viewModel)
                     Screen.Profile -> ProfileScreen(viewModel = viewModel)
-                    is Screen.TutorChat -> TutorScreen(viewModel = viewModel, conceptId = screen.conceptId)
+                    is Screen.TutorChat -> TutorScreen(viewModel = viewModel, conceptId = screen.conceptId, deckId = screen.deckId)
                     is Screen.PdfIntelligence -> PdfIntelligenceScreen(viewModel = viewModel, conceptId = screen.conceptId ?: "limits")
                     is Screen.QuizGame -> QuizScreen(viewModel = viewModel, conceptId = screen.conceptId, difficulty = screen.difficulty)
                 }

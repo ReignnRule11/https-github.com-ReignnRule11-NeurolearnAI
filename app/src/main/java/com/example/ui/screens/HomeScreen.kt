@@ -48,6 +48,7 @@ fun HomeScreen(viewModel: MainViewModel) {
     val concepts by viewModel.allConcepts.collectAsState()
     val dueCards by viewModel.dueFlashcards.collectAsState()
     val allFlashcards by viewModel.allFlashcards.collectAsState()
+    val allDecks by viewModel.allDecks.collectAsState()
     val aiAdvice by viewModel.aiPlannerAdvice.collectAsState()
     val isAILoading by viewModel.isAILoading.collectAsState()
     val adminSettings by viewModel.adminSettings.collectAsState()
@@ -64,6 +65,7 @@ fun HomeScreen(viewModel: MainViewModel) {
     // Sort options for Smart Planner
     var selectedSortBy by remember { mutableStateOf("Urgent Decay") } // Urgent Decay, Concept Gaps, Overdue Review, Stable
     var selectedSubjectFilter by remember { mutableStateOf("All") } // All, Calculus, Computer Science, Chemistry
+    var showAddScheduleDialog by remember { mutableStateOf(false) }
 
     val filteredAndSortedConcepts = remember(concepts, selectedSortBy, selectedSubjectFilter) {
         var result = if (selectedSubjectFilter == "All") {
@@ -1107,17 +1109,32 @@ fun HomeScreen(viewModel: MainViewModel) {
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = {
-                                    profile?.let {
-                                        coroutineScope.launch {
-                                            viewModel.generateStudyPlannerTasks(it)
-                                        }
-                                    }
-                                },
-                                shape = RoundedCornerShape(12.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("Re-generate Standard Tasks")
+                                Button(
+                                    onClick = {
+                                        viewModel.generateIntelligentStudySchedulerPlan()
+                                    },
+                                    modifier = Modifier.weight(1f).testTag("generate_intelligent_tasks_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("AI Study Plan 🧠", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        profile?.let {
+                                            coroutineScope.launch {
+                                                viewModel.generateStudyPlannerTasks(it)
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1.5f).testTag("regenerate_standard_tasks_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Standard Plan", style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
                     }
@@ -1127,7 +1144,8 @@ fun HomeScreen(viewModel: MainViewModel) {
                     StudyTaskCard(
                         task = task, 
                         onChecked = { viewModel.toggleTaskCompletion(task) },
-                        onDelete = { viewModel.removeTaskFromStudyPlan(task.id) }
+                        onDelete = { viewModel.removeTaskFromStudyPlan(task.id) },
+                        onReviewClick = { viewModel.navigateTo(Screen.Review) }
                     )
                 }
             }
@@ -1458,7 +1476,7 @@ fun HomeScreen(viewModel: MainViewModel) {
                             
                             if (aiAdvice != null) {
                                 IconButton(
-                                    onClick = { viewModel.fetchAIPlannerAdvice() },
+                                    onClick = { viewModel.generateIntelligentStudySchedulerPlan() },
                                     enabled = !isAILoading
                                 ) {
                                     Icon(
@@ -1501,14 +1519,270 @@ fun HomeScreen(viewModel: MainViewModel) {
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Button(
-                                    onClick = { viewModel.fetchAIPlannerAdvice() },
+                                    onClick = { viewModel.generateIntelligentStudySchedulerPlan() },
                                     shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth().testTag("generate_intelligent_plan_btn")
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "Spark")
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Generate Custom Strategic Plan")
+                                        Text("Generate Intelligent Daily Plan")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1.2. Scheduled Study Calendar Section
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = "Calendar",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Study Session Calendar",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            
+                            Button(
+                                onClick = { showAddScheduleDialog = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.height(32.dp).testTag("add_custom_session_btn")
+                            ) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = "Schedule", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Schedule", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(6.dp))
+                        
+                        Text(
+                            text = "Sessions scheduled locally and synced to the Firestore study plan calendar.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Active Scheduled Sessions List
+                        val scheduledTasks = tasks.filter { !it.isCompleted }
+                        if (scheduledTasks.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No upcoming study sessions scheduled.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            val timeFormatter = remember { SimpleDateFormat("hh:mm a (MMM dd)", Locale.getDefault()) }
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                scheduledTasks.forEach { task ->
+                                    val isOverdue = task.dueDate <= System.currentTimeMillis()
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (isOverdue) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                            )
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (isOverdue) MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+                                                else Color.Transparent,
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = task.conceptName,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = task.subject,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                }
+                                                Text(
+                                                    text = if (isOverdue) "⏰ Overdue" else "🕒 " + timeFormatter.format(Date(task.dueDate)),
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = if (isOverdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        
+                                        IconButton(
+                                            onClick = { viewModel.removeTaskFromStudyPlan(task.id) },
+                                            modifier = Modifier.size(28.dp).testTag("delete_scheduled_task_${task.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Unschedule",
+                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1.5. Spaced Recall Deck Status Cockpit Section
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Inventory2,
+                                contentDescription = "Decks",
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Spaced Repetition Deck Status",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(6.dp))
+                        
+                        Text(
+                            text = "Memory recall analytics across your flashcard decks.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        if (allDecks.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No study decks found. Create one in the Decks tab!",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                allDecks.forEach { deck ->
+                                    val totalCards = allFlashcards.count { it.deckId == deck.id }
+                                    val dueCount = allFlashcards.count { it.deckId == deck.id && it.nextReviewDate <= System.currentTimeMillis() }
+                                    val masteredCount = allFlashcards.count { it.deckId == deck.id && it.repetitions >= 4 }
+                                    
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = deck.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "$totalCards cards",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Box(
+                                                    modifier = Modifier.size(3.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), CircleShape)
+                                                )
+                                                Text(
+                                                    text = "$masteredCount mastered",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFF43A047)
+                                                )
+                                            }
+                                        }
+                                        
+                                        // Due Tag
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(
+                                                    if (dueCount > 0) MaterialTheme.colorScheme.errorContainer
+                                                    else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                                )
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (dueCount > 0) "$dueCount Due" else "Stable ✨",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = if (dueCount > 0) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1872,13 +2146,147 @@ fun HomeScreen(viewModel: MainViewModel) {
             }
         )
     }
+
+    if (showAddScheduleDialog) {
+        var scheduleTitle by remember { mutableStateOf("") }
+        var selectedScheduleSubject by remember { mutableStateOf("Calculus") }
+        var minutesFromNow by remember { mutableStateOf(1) }
+
+        AlertDialog(
+            onDismissRequest = { showAddScheduleDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = "Schedule",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Schedule Study Session",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    OutlinedTextField(
+                        value = scheduleTitle,
+                        onValueChange = { scheduleTitle = it },
+                        label = { Text("Session Topic") },
+                        placeholder = { Text("e.g. Limits Review or Chemistry Quiz") },
+                        modifier = Modifier.fillMaxWidth().testTag("schedule_title_input"),
+                        singleLine = true
+                    )
+                    
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Subject",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf("Calculus", "Computer Science", "Chemistry").forEach { subject ->
+                                FilterChip(
+                                    selected = selectedScheduleSubject == subject,
+                                    onClick = { selectedScheduleSubject = subject },
+                                    label = { Text(subject) },
+                                    modifier = Modifier.testTag("schedule_subject_chip_$subject")
+                                )
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Schedule Time Delay (Test Alarm)",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(
+                                0 to "Now ⚡",
+                                1 to "1 min ⏰",
+                                3 to "3 min",
+                                5 to "5 min",
+                                15 to "15 min"
+                            ).forEach { (mins, label) ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (minutesFromNow == mins) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                        )
+                                        .clickable { minutesFromNow = mins }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = if (minutesFromNow == mins) FontWeight.Bold else FontWeight.Medium
+                                        ),
+                                        color = if (minutesFromNow == mins) MaterialTheme.colorScheme.onPrimary
+                                        else MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = "Tip: Choose 'Now' or '1 min' to trigger the alert/notification immediately or in 60 seconds!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (scheduleTitle.isNotBlank()) {
+                            viewModel.scheduleStudySession(
+                                conceptName = scheduleTitle,
+                                subject = selectedScheduleSubject,
+                                minutesFromNow = minutesFromNow
+                            )
+                            showAddScheduleDialog = false
+                        } else {
+                            viewModel.showToast("Please enter a session topic")
+                        }
+                    },
+                    modifier = Modifier.testTag("schedule_confirm_button")
+                ) {
+                    Text("Schedule")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showAddScheduleDialog = false },
+                    modifier = Modifier.testTag("schedule_cancel_button")
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun StudyTaskCard(
     task: StudyTask, 
     onChecked: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onReviewClick: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
@@ -1929,6 +2337,15 @@ fun StudyTaskCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (task.taskType == "deck" && !task.isCompleted && onReviewClick != null) {
+                    TextButton(
+                        onClick = onReviewClick,
+                        modifier = Modifier.padding(end = 4.dp).testTag("task_start_review_${task.id}")
+                    ) {
+                        Text("Review", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))

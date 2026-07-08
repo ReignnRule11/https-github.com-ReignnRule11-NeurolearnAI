@@ -61,6 +61,7 @@ data class FlashcardDeck(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
     val description: String,
+    val subject: String = "General",
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -76,7 +77,14 @@ data class Flashcard(
     val repetitions: Int = 0,
     val nextReviewDate: Long = System.currentTimeMillis(),
     val lastReviewed: Long = 0L,
-    val deckId: String? = "default"
+    val deckId: String? = "default",
+    val tags: String = ""
+)
+
+data class FlashcardRatingResult(
+    val question: String,
+    val answer: String,
+    val rating: Int // 1 = Hard, 2 = Good, 3 = Easy
 )
 
 @Entity(tableName = "chat_messages")
@@ -96,7 +104,9 @@ data class StudyTask(
     val subject: String,
     val dueDate: Long = System.currentTimeMillis(),
     val isCompleted: Boolean = false,
-    val xpAwarded: Int = 15
+    val xpAwarded: Int = 15,
+    val deckId: String? = null,
+    val taskType: String = "concept" // "concept", "deck", "custom"
 )
 
 // --- DAOs ---
@@ -217,7 +227,7 @@ interface StudyTaskDao {
         StudyTask::class,
         FlashcardDeck::class
     ],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
