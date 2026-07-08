@@ -1,0 +1,6 @@
+{
+  "name": "NeuroLearn AI",
+  "description": "Your Personal AI Learning Operating System.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
