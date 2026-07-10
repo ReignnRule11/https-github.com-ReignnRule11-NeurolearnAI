@@ -4,9 +4,13 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,7 +58,28 @@ import com.example.data.MindMapGraph
 import com.example.data.Flashcard
 import com.example.data.FlashcardRatingResult
 import com.example.data.FlashcardDeck
+import com.example.data.ChatMessage
 import com.example.ui.MainViewModel
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.content.pm.PackageManager
+import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import java.util.Locale
+import org.json.JSONObject
+import com.example.api.GeminiClient
+import com.example.R
 
 @Composable
 fun ReviewScreen(viewModel: MainViewModel) {
@@ -948,6 +973,7 @@ fun DeckDetailAndStudyView(
     if (isStudying) {
         val activeSessionCards = if (studyAllMode) deckCards else dueCards
         ActiveStudySession(
+            deckId = deck.id,
             deckName = deck.name,
             cards = activeSessionCards,
             viewModel = viewModel,
@@ -1364,11 +1390,13 @@ fun DeckDetailAndStudyView(
 
 enum class StudyMode {
     ACTIVE_RECALL,
-    REVIEW
+    REVIEW,
+    QUIZ
 }
 
 @Composable
 fun ActiveStudySession(
+    deckId: String,
     deckName: String,
     cards: List<Flashcard>,
     viewModel: MainViewModel,
@@ -1384,6 +1412,7 @@ fun ActiveStudySession(
             viewModel = viewModel,
             onClose = {
                 viewModel.clearActiveRecallSummary()
+                viewModel.clearDeckContentSummary()
                 onQuit()
             }
         )
@@ -1393,6 +1422,94 @@ fun ActiveStudySession(
     var currentCardIndex by remember { mutableStateOf(0) }
     var isAnswerRevealed by remember { mutableStateOf(false) }
     var studyMode by remember { mutableStateOf(StudyMode.ACTIVE_RECALL) }
+    var showTwinChat by remember { mutableStateOf(false) }
+
+    LaunchedEffect(deckId) {
+        viewModel.initializeDeckChatContext(deckId)
+    }
+
+    var quizQuestions by remember { mutableStateOf<List<com.example.ui.QuizQuestion>>(emptyList()) }
+    var isQuizLoading by remember { mutableStateOf(false) }
+    var quizError by remember { mutableStateOf<String?>(null) }
+    var currentQuizIndex by remember { mutableStateOf(0) }
+    var selectedOption by remember { mutableStateOf<String?>(null) }
+    var isQuizAnswerChecked by remember { mutableStateOf(false) }
+    var quizScore by remember { mutableStateOf(0) }
+    var isQuizFinished by remember { mutableStateOf(false) }
+
+    val currentProfileState by viewModel.profile.collectAsState()
+    val twinAvatarState = currentProfileState?.selectedTwinAvatar ?: "socratic"
+    val twinNameState = when (twinAvatarState) {
+        "tech" -> "Tech Visionary"
+        "scholar" -> "Scholar Academic"
+        "creative" -> "Creative Innovator"
+        else -> "Socratic Mentor"
+    }
+    val avatarResState = when (twinAvatarState) {
+        "tech" -> R.drawable.img_twin_tech
+        "scholar" -> R.drawable.img_twin_scholar
+        "creative" -> R.drawable.img_twin_creative
+        else -> R.drawable.img_twin_socratic
+    }
+
+    LaunchedEffect(studyMode) {
+        if (studyMode == StudyMode.QUIZ && quizQuestions.isEmpty()) {
+            isQuizLoading = true
+            quizError = null
+            try {
+                quizQuestions = generateTwinQuiz(deckName, cards, twinNameState)
+            } catch (e: Exception) {
+                quizError = "Failed to design quiz: ${e.message}"
+            } finally {
+                isQuizLoading = false
+            }
+        }
+    }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var spokenAnswer by remember { mutableStateOf("") }
+    var isRecording by remember { mutableStateOf(false) }
+    var recordError by remember { mutableStateOf<String?>(null) }
+    var isEvaluating by remember { mutableStateOf(false) }
+    var evaluationResult by remember { mutableStateOf<VerbalEvaluation?>(null) }
+
+    val speechState = remember(context) {
+        SpeechRecognizerState(
+            context = context,
+            onTranscriptionUpdated = { text -> spokenAnswer = text },
+            onErrorOccurred = { err -> recordError = err }
+        )
+    }
+
+    DisposableEffect(speechState) {
+        onDispose {
+            speechState.destroy()
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                recordError = null
+                isRecording = true
+                spokenAnswer = ""
+                speechState.startListening()
+            } else {
+                recordError = "Microphone permission is required to speak answers."
+            }
+        }
+    )
+
+    LaunchedEffect(currentCardIndex) {
+        spokenAnswer = ""
+        isRecording = false
+        recordError = null
+        isEvaluating = false
+        evaluationResult = null
+    }
     
     val currentCard = cards.getOrNull(currentCardIndex)
     
@@ -1402,11 +1519,12 @@ fun ActiveStudySession(
         focusRequester.requestFocus()
     }
     
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .focusRequester(focusRequester)
-            .focusable()
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .focusRequester(focusRequester)
+                .focusable()
             .onKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && currentCard != null) {
                     when (event.key) {
@@ -1516,9 +1634,15 @@ fun ActiveStudySession(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
-            IconButton(onClick = {}, enabled = false) {
-                // Spacer item to center
-                Icon(Icons.AutoMirrored.Filled.Help, contentDescription = null, tint = Color.Transparent)
+            IconButton(
+                onClick = { showTwinChat = !showTwinChat },
+                modifier = Modifier.testTag("toggle_twin_chat_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Psychology,
+                    contentDescription = "Chat with AI Twin",
+                    tint = if (showTwinChat) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         
@@ -1555,13 +1679,14 @@ fun ActiveStudySession(
                         imageVector = Icons.Default.Psychology,
                         contentDescription = "Active Recall Mode",
                         tint = if (studyMode == StudyMode.ACTIVE_RECALL) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "Active Recall",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = if (studyMode == StudyMode.ACTIVE_RECALL) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (studyMode == StudyMode.ACTIVE_RECALL) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
                     )
                 }
             }
@@ -1583,13 +1708,43 @@ fun ActiveStudySession(
                         imageVector = Icons.Default.MenuBook,
                         contentDescription = "Review Mode",
                         tint = if (studyMode == StudyMode.REVIEW) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "Review",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = if (studyMode == StudyMode.REVIEW) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (studyMode == StudyMode.REVIEW) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (studyMode == StudyMode.QUIZ) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .clickable { studyMode = StudyMode.QUIZ }
+                    .padding(vertical = 8.dp)
+                    .testTag("quiz_mode_toggle"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Quiz,
+                        contentDescription = "Twin Quiz Mode",
+                        tint = if (studyMode == StudyMode.QUIZ) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Twin Quiz",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (studyMode == StudyMode.QUIZ) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
                     )
                 }
             }
@@ -1597,7 +1752,455 @@ fun ActiveStudySession(
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        if (currentCard != null) {
+        if (studyMode == StudyMode.QUIZ) {
+            if (isQuizLoading) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Image(
+                        painter = painterResource(id = avatarResState),
+                        contentDescription = "Twin Avatar",
+                        modifier = Modifier
+                            .size(96.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Formulating Twin Quiz...",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Your digital twin, $twinNameState, is analyzing your retention patterns to design a personalized 5-question multiple choice quiz.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else if (quizError != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = "Error",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Quiz Generation Failed",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = quizError ?: "An unexpected error occurred.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isQuizLoading = true
+                                quizError = null
+                                try {
+                                    quizQuestions = generateTwinQuiz(deckName, cards, twinNameState)
+                                } catch (e: Exception) {
+                                    quizError = "Failed to design quiz: ${e.message}"
+                                } finally {
+                                    isQuizLoading = false
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Try Again")
+                    }
+                }
+            } else if (isQuizFinished) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = avatarResState),
+                        contentDescription = "Twin Avatar",
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Quiz Completed!",
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Retrospective conceptual analysis by $twinNameState",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$quizScore/5",
+                                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Correct",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "$twinNameState's Retrospective:",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            val feedbackText = when (quizScore) {
+                                5 -> "An absolute masterclass! You scored 100%. Your cognitive model predicts exceptional conceptual stability for these items. Keep up this magnificent pace!"
+                                4 -> "Outstanding retention! You scored 80%. A few very minor conceptual nuances are still locking in, but you've demonstrated incredibly reliable recall."
+                                3 -> "Solid grasp! You got 60%. You're in a stable learning transition, but we can do even better. Take some time to review your Hard rated items."
+                                else -> "Keep studying! Active recall is all about iterative retrieval strength. Let's do a short review session and retake this quiz to lock in the neural pathways."
+                            }
+                            Text(
+                                text = feedbackText,
+                                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(32.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    isQuizLoading = true
+                                    quizError = null
+                                    currentQuizIndex = 0
+                                    selectedOption = null
+                                    isQuizAnswerChecked = false
+                                    quizScore = 0
+                                    isQuizFinished = false
+                                    try {
+                                        quizQuestions = generateTwinQuiz(deckName, cards, twinNameState)
+                                    } catch (e: Exception) {
+                                        quizError = "Failed to design quiz: ${e.message}"
+                                    } finally {
+                                        isQuizLoading = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Retake")
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Retake Quiz")
+                        }
+                        
+                        Button(
+                            onClick = {
+                                studyMode = StudyMode.ACTIVE_RECALL
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Back to Cards")
+                        }
+                    }
+                }
+            } else {
+                val question = quizQuestions.getOrNull(currentQuizIndex)
+                if (question != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Question ${currentQuizIndex + 1} of 5",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Score: $quizScore/5",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        
+                        LinearProgressIndicator(
+                            progress = { (currentQuizIndex + 1).toFloat() / 5f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                        )
+                        
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = question.question,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        lineHeight = 26.sp
+                                    ),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            question.options.forEach { option ->
+                                val isSelected = selectedOption == option
+                                val isCorrect = option == question.correctAnswer
+                                
+                                val borderStroke = when {
+                                    isQuizAnswerChecked && isCorrect -> BorderStroke(2.dp, Color(0xFF43A047))
+                                    isQuizAnswerChecked && isSelected && !isCorrect -> BorderStroke(2.dp, Color(0xFFE53935))
+                                    isSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                                    else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                                }
+                                
+                                val containerColor = when {
+                                    isQuizAnswerChecked && isCorrect -> Color(0xFFE8F5E9)
+                                    isQuizAnswerChecked && isSelected && !isCorrect -> Color(0xFFFFEBEE)
+                                    isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                    else -> MaterialTheme.colorScheme.surface
+                                }
+                                
+                                val textColor = when {
+                                    isQuizAnswerChecked && isCorrect -> Color(0xFF2E7D32)
+                                    isQuizAnswerChecked && isSelected && !isCorrect -> Color(0xFFC62828)
+                                    isSelected -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                }
+                                
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = !isQuizAnswerChecked) {
+                                            selectedOption = option
+                                        },
+                                    border = borderStroke,
+                                    colors = CardDefaults.cardColors(containerColor = containerColor),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = option,
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                            color = textColor,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (isQuizAnswerChecked) {
+                                            if (isCorrect) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = "Correct",
+                                                    tint = Color(0xFF43A047),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            } else if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Cancel,
+                                                    contentDescription = "Incorrect",
+                                                    tint = Color(0xFFE53935),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .clip(CircleShape)
+                                                    .border(
+                                                        1.5.dp,
+                                                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                                        CircleShape
+                                                    )
+                                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (isSelected) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(8.dp)
+                                                            .clip(CircleShape)
+                                                            .background(MaterialTheme.colorScheme.onPrimary)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (isQuizAnswerChecked && question.explanation.isNotBlank()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = avatarResState),
+                                        contentDescription = "Twin Avatar",
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "$twinNameState's Explanation:",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = question.explanation,
+                                            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        if (!isQuizAnswerChecked) {
+                            Button(
+                                onClick = {
+                                    if (selectedOption != null) {
+                                        isQuizAnswerChecked = true
+                                        if (selectedOption == question.correctAnswer) {
+                                            quizScore++
+                                        }
+                                    }
+                                },
+                                enabled = selectedOption != null,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                            ) {
+                                Text("Submit Answer")
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    if (currentQuizIndex + 1 < 5) {
+                                        currentQuizIndex++
+                                        selectedOption = null
+                                        isQuizAnswerChecked = false
+                                    } else {
+                                        isQuizFinished = true
+                                        viewModel.completeQuiz(quizScore)
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                            ) {
+                                Text(if (currentQuizIndex == 4) "Finish Quiz" else "Next Question")
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            if (currentCard != null) {
             // Deck progress
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1683,6 +2286,22 @@ fun ActiveStudySession(
                         )
                         
                         if (studyMode == StudyMode.ACTIVE_RECALL) {
+                            // Resolve Twin info
+                            val currentProfile by viewModel.profile.collectAsState()
+                            val twinAvatar = currentProfile?.selectedTwinAvatar ?: "socratic"
+                            val twinName = when (twinAvatar) {
+                                "tech" -> "Tech Visionary"
+                                "scholar" -> "Scholar Academic"
+                                "creative" -> "Creative Innovator"
+                                else -> "Socratic Mentor"
+                            }
+                            val avatarRes = when (twinAvatar) {
+                                "tech" -> R.drawable.img_twin_tech
+                                "scholar" -> R.drawable.img_twin_scholar
+                                "creative" -> R.drawable.img_twin_creative
+                                else -> R.drawable.img_twin_socratic
+                            }
+
                             AnimatedVisibility(
                                 visible = isAnswerRevealed,
                                 enter = fadeIn() + expandVertically(),
@@ -1690,28 +2309,365 @@ fun ActiveStudySession(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    Text(
-                                        text = "ANSWER",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = Color(0xFF4CAF50)
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        text = currentCard.answer,
-                                        style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("card_answer_text")
-                                    )
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = "ANSWER",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = Color(0xFF4CAF50)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = currentCard.answer,
+                                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("card_answer_text")
+                                        )
+                                    }
+
+                                    // Vocal Recall Evaluation Feedback Card
+                                    if (evaluationResult != null) {
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 8.dp)
+                                                .testTag("verbal_recall_feedback_card"),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
+                                            ),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)),
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                // Twin Avatar Header
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Image(
+                                                        painter = painterResource(id = avatarRes),
+                                                        contentDescription = "AI Twin Avatar",
+                                                        modifier = Modifier
+                                                            .size(36.dp)
+                                                            .clip(CircleShape)
+                                                            .border(1.5.dp, MaterialTheme.colorScheme.secondary, CircleShape),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                    Column {
+                                                        Text(
+                                                            text = "$twinName's Vocal Evaluation",
+                                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                            color = MaterialTheme.colorScheme.secondary
+                                                        )
+                                                        Text(
+                                                            text = "Concept Match: ${evaluationResult!!.score}%",
+                                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                                        )
+                                                    }
+                                                }
+
+                                                // Conceptual Score Indicator Bar
+                                                LinearProgressIndicator(
+                                                    progress = { evaluationResult!!.score.toFloat() / 100f },
+                                                    color = when {
+                                                        evaluationResult!!.score >= 75 -> Color(0xFF43A047)
+                                                        evaluationResult!!.score >= 40 -> Color(0xFFFFB300)
+                                                        else -> Color(0xFFE53935)
+                                                    },
+                                                    trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(6.dp)
+                                                        .clip(RoundedCornerShape(3.dp))
+                                                )
+
+                                                // Verbal feedback text
+                                                Text(
+                                                    text = evaluationResult!!.feedback,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+
+                                                // Quick Grade Selection accept recommendation
+                                                Card(
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                                                    ),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            // Accept Twin's Recommended Grade and trigger corresponding action!
+                                                            val rating = when (evaluationResult!!.ratingRecommend.lowercase(Locale.getDefault())) {
+                                                                "easy" -> 3
+                                                                "good" -> 2
+                                                                else -> 1
+                                                            }
+                                                            val result = FlashcardRatingResult(currentCard.question, currentCard.answer, rating)
+                                                            sessionResults.add(result)
+                                                            viewModel.rateFlashcard(currentCard, rating)
+                                                            if (currentCardIndex + 1 < cards.size) {
+                                                                currentCardIndex++
+                                                                isAnswerRevealed = false
+                                                            } else {
+                                                                showResultsSummary = true
+                                                            }
+                                                        }
+                                                        .testTag("apply_twin_grade_button")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(10.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.ThumbUp,
+                                                                contentDescription = "Apply grade",
+                                                                tint = MaterialTheme.colorScheme.secondary,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                            Column {
+                                                                Text(
+                                                                    text = "Apply Twin's Recommended Grade",
+                                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                                Text(
+                                                                    text = "Automatically rates this card as \"${evaluationResult!!.ratingRecommend}\"",
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                                )
+                                                            }
+                                                        }
+                                                        Icon(
+                                                            imageVector = Icons.Default.ChevronRight,
+                                                            contentDescription = "Apply",
+                                                            tint = MaterialTheme.colorScheme.secondary,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            
+
                             if (!isAnswerRevealed) {
+                                // Socratic Vocal Recall Input Widget
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp)
+                                        .testTag("verbal_recall_section"),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                                    ),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.RecordVoiceOver,
+                                                contentDescription = "Speak Answer",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "Vocal Recall Evaluation",
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        
+                                        Text(
+                                            text = "Speak your answer. Your Socratic twin will evaluate your active recall depth conceptually!",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            textAlign = TextAlign.Center,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        
+                                        if (isRecording) {
+                                            // Live waveform visualizer
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(40.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                AudioWaveformVisualizer(
+                                                    isListening = true,
+                                                    rmsDb = speechState.rmsDb,
+                                                    modifier = Modifier.height(32.dp)
+                                                )
+                                            }
+                                            
+                                            Text(
+                                                text = if (spokenAnswer.isBlank()) "Listening..." else spokenAnswer,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.fillMaxWidth().testTag("live_speech_transcription")
+                                            )
+                                            
+                                            Button(
+                                                onClick = {
+                                                    isRecording = false
+                                                    speechState.stopListening()
+                                                    if (spokenAnswer.isNotBlank()) {
+                                                        isEvaluating = true
+                                                        scope.launch {
+                                                            evaluationResult = evaluateVerbalAnswerWithGemini(
+                                                                spoken = spokenAnswer,
+                                                                expected = currentCard.answer,
+                                                                question = currentCard.question
+                                                            )
+                                                            isEvaluating = false
+                                                            isAnswerRevealed = true
+                                                        }
+                                                    }
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.fillMaxWidth().testTag("stop_recording_button")
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(imageVector = Icons.Default.Stop, contentDescription = "Stop & Evaluate")
+                                                    Text("Stop & Evaluate")
+                                                }
+                                            }
+                                        } else {
+                                            if (spokenAnswer.isNotBlank()) {
+                                                Text(
+                                                    text = "Spoken answer: \"$spokenAnswer\"",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.padding(horizontal = 8.dp).testTag("spoken_answer_text")
+                                                )
+                                            }
+                                            
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Button(
+                                                    onClick = {
+                                                        val hasPermission = ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            android.Manifest.permission.RECORD_AUDIO
+                                                        ) == PackageManager.PERMISSION_GRANTED
+                                                        
+                                                        if (hasPermission) {
+                                                            recordError = null
+                                                            isRecording = true
+                                                            spokenAnswer = ""
+                                                            speechState.startListening()
+                                                        } else {
+                                                            permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f).testTag("start_voice_recall_button"),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Icon(imageVector = Icons.Default.Mic, contentDescription = "Speak Answer")
+                                                        Text(if (spokenAnswer.isBlank()) "Start Speaking" else "Re-record")
+                                                    }
+                                                }
+                                                
+                                                if (spokenAnswer.isNotBlank()) {
+                                                    Button(
+                                                        onClick = {
+                                                            isEvaluating = true
+                                                            scope.launch {
+                                                                evaluationResult = evaluateVerbalAnswerWithGemini(
+                                                                    spoken = spokenAnswer,
+                                                                    expected = currentCard.answer,
+                                                                    question = currentCard.question
+                                                                )
+                                                                isEvaluating = false
+                                                                isAnswerRevealed = true
+                                                            }
+                                                        },
+                                                        modifier = Modifier.weight(1f).testTag("evaluate_voice_recall_button"),
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Icon(imageVector = Icons.Default.Psychology, contentDescription = "Evaluate")
+                                                            Text("Evaluate")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (isEvaluating) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    strokeWidth = 2.dp
+                                                )
+                                                Text(
+                                                    text = "Evaluating active recall...",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                            }
+                                        }
+                                        
+                                        if (recordError != null) {
+                                            Text(
+                                                text = recordError ?: "",
+                                                color = MaterialTheme.colorScheme.error,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.fillMaxWidth().testTag("record_error_msg")
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Button(
                                     onClick = { isAnswerRevealed = true },
@@ -1727,6 +2683,33 @@ fun ActiveStudySession(
                                     ) {
                                         Icon(imageVector = Icons.Default.Visibility, contentDescription = "Reveal Answer")
                                         Text("Reveal Answer")
+                                    }
+                                }
+                                
+                                Spacer(modifier = Modifier.height(10.dp))
+                                OutlinedButton(
+                                    onClick = { showTwinChat = true },
+                                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp)
+                                        .testTag("ask_twin_about_card_button")
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Psychology,
+                                            contentDescription = "Ask Twin",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "Ask Twin About This Card",
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
                                 }
                             }
@@ -1966,6 +2949,7 @@ fun ActiveStudySession(
                 }
             }
         }
+        }
         
         Spacer(modifier = Modifier.height(16.dp))
         
@@ -1995,6 +2979,24 @@ fun ActiveStudySession(
             )
         }
     }
+
+    AnimatedVisibility(
+        visible = showTwinChat,
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        modifier = Modifier.align(Alignment.BottomCenter)
+    ) {
+        TwinStudyChatDrawer(
+            deckId = deckId,
+            currentCard = currentCard,
+            viewModel = viewModel,
+            onDismiss = { showTwinChat = false },
+            twinName = twinNameState,
+            twinAvatar = twinAvatarState,
+            avatarRes = avatarResState
+        )
+    }
+}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2077,9 +3079,16 @@ fun CreateDeckDialog(
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
                     ) {
-                        listOf("Calculus", "Computer Science", "Chemistry", "Biology", "General").forEach { sub ->
+                        listOf(
+                            "Calculus", "Computer Science", "Chemistry", "Biology",
+                            "Product Management", "Software Development", "Web3 & Blockchain",
+                            "E-commerce", "Business Analysis", "Product Design",
+                            "Project Management", "Digital Marketing", "Data Analysis", "General"
+                        ).forEach { sub ->
                             val isSelected = subject.equals(sub, ignoreCase = true)
                             FilterChip(
                                 selected = isSelected,
@@ -2743,6 +3752,20 @@ fun ActiveRecallSummaryScreen(
     val isGeneratingSummary by viewModel.isGeneratingSummary.collectAsState()
     val activeRecallSummary by viewModel.activeRecallSummary.collectAsState()
 
+    val isGeneratingDeckSummary by viewModel.isGeneratingDeckSummary.collectAsState()
+    val deckContentSummary by viewModel.deckContentSummary.collectAsState()
+
+    val decks by viewModel.allDecks.collectAsState()
+    val deck = remember(decks) { decks.find { it.name == deckName } }
+    val allCards by viewModel.allFlashcards.collectAsState()
+    val deckCards = remember(deck, allCards) {
+        if (deck != null) {
+            allCards.filter { it.deckId == deck.id }
+        } else {
+            emptyList()
+        }
+    }
+
     // Trigger the generation of summary if it's empty and not currently generating
     LaunchedEffect(results) {
         if (activeRecallSummary == null && !isGeneratingSummary) {
@@ -2927,9 +3950,146 @@ fun ActiveRecallSummaryScreen(
                         }
                     }
                 }
+            }
 
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
+            // Deck Content Synthesis section
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("deck_summary_container_card"),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Book,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Text(
+                                text = "Digital Twin Deck Overview",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        if (deckContentSummary == null) {
+                            Text(
+                                text = "Generate a comprehensive, high-yield textual summary of the active concepts in this flashcard deck.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            if (isGeneratingDeckSummary) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = "Synthesizing deck concepts...",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            } else {
+                                Button(
+                                    onClick = { viewModel.generateDeckContentSummary(deckName, deckCards) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("generate_deck_summary_button"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Summarize Entire Deck")
+                                }
+                            }
+                        } else {
+                            if (isGeneratingDeckSummary) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = "Regenerating deck summary...",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            Text(
+                                text = deckContentSummary ?: "",
+                                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            if (!isGeneratingDeckSummary) {
+                                OutlinedButton(
+                                    onClick = { viewModel.generateDeckContentSummary(deckName, deckCards) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("regenerate_deck_summary_button"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Regenerate Summary")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
                     
                     // Quick Action: Socratic chat to close gaps
                     Card(
@@ -2994,7 +4154,6 @@ fun ActiveRecallSummaryScreen(
                         }
                     }
                 }
-            }
 
             item {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -3013,5 +4172,493 @@ fun ActiveRecallSummaryScreen(
         }
     }
 }
+
+data class VerbalEvaluation(
+    val score: Int,
+    val ratingRecommend: String,
+    val feedback: String,
+    val comparison: String
+)
+
+fun localEvaluateVerbalAnswer(spoken: String, expected: String): VerbalEvaluation {
+    val spokenClean = spoken.lowercase(Locale.getDefault()).replace(Regex("[^a-zA-Z0-9 ]"), "")
+    val expectedClean = expected.lowercase(Locale.getDefault()).replace(Regex("[^a-zA-Z0-9 ]"), "")
+    
+    val spokenWords = spokenClean.split(" ").filter { it.isNotBlank() }.toSet()
+    val expectedWords = expectedClean.split(" ").filter { it.isNotBlank() }.toSet()
+    
+    if (expectedWords.isEmpty()) {
+        return VerbalEvaluation(
+            score = 100,
+            ratingRecommend = "Easy",
+            feedback = "Wonderful! Your spoken answer was registered, and since there is no reference answer required, you get a perfect score! Let's continue.",
+            comparison = "Spoken: '$spoken' vs. Expected: '$expected'"
+        )
+    }
+    
+    val matchingWords = spokenWords.intersect(expectedWords)
+    val score = if (expectedWords.isEmpty()) 100 else ((matchingWords.size.toFloat() / expectedWords.size.toFloat()) * 100).toInt()
+    
+    val (recommend, textFeedback) = when {
+        score >= 70 -> {
+            "Easy" to "Superb verbal recall! Your response had a strong conceptual overlap (${score}%) with the expected definition. Excellent job articulating this concept!"
+        }
+        score >= 35 -> {
+            "Good" to "Good attempt! You recalled several key terms correctly (${score}% overlap), but some fine-grained details of the definition were missed. Review the card's answer to fill the gap!"
+        }
+        else -> {
+            "Hard" to "A brave effort! However, your verbal answer had low keyword overlap (${score}%) with the card's answer. Take a moment to read the full explanation, then try recalling it again."
+        }
+    }
+    
+    return VerbalEvaluation(
+        score = score.coerceIn(5, 100),
+        ratingRecommend = recommend,
+        feedback = textFeedback,
+        comparison = "Spoken: '$spoken' vs. Expected: '$expected'"
+    )
+}
+
+suspend fun evaluateVerbalAnswerWithGemini(spoken: String, expected: String, question: String): VerbalEvaluation {
+    if (!GeminiClient.isApiKeyAvailable()) {
+        return localEvaluateVerbalAnswer(spoken, expected)
+    }
+    
+    val prompt = """
+        You are the user's Socratic Digital Twin. Your task is to evaluate the user's verbal response to a flashcard.
+        
+        Flashcard Question:
+        "$question"
+        
+        Expected Answer:
+        "$expected"
+        
+        User's Spoken Answer:
+        "$spoken"
+        
+        Compare the user's spoken response against the expected answer. Be very intelligent:
+        1. Ignore speech-to-text spelling/grammar artifacts or typos.
+        2. Evaluate the conceptual accuracy (0 to 100).
+        3. Recommend a rating: "Easy" (mastered, correct), "Good" (partially correct, missed some minor details), or "Hard" (wrong or completely off).
+        4. Write a 2-3 sentence personalized, encouraging Socratic feedback message as their Twin. Be warm and supportive.
+        
+        Output strictly raw JSON format (no backticks, no markdown prefix):
+        {
+          "score": 85,
+          "ratingRecommend": "Good",
+          "feedback": "Your verbal answer captures the core concept wonderfully! You correctly noted that..., but make sure to also mention that..."
+        }
+    """.trimIndent()
+    
+    return try {
+        val resultJson = GeminiClient.generate(prompt, "You are a helpful Socratic Digital Twin who evaluates verbal flashcard answers.")
+        val clean = resultJson.trim()
+            .removePrefix("```json")
+            .removeSuffix("```")
+            .trim()
+            
+        val json = JSONObject(clean)
+        VerbalEvaluation(
+            score = json.optInt("score", 70),
+            ratingRecommend = json.optString("ratingRecommend", "Good"),
+            feedback = json.optString("feedback", "Excellent work reviewing this card! Keep practicing."),
+            comparison = "Spoken: '$spoken' vs. Expected: '$expected'"
+        )
+    } catch (e: Exception) {
+        Log.e("neurolearn", "Gemini verbal eval failed, falling back to local word overlap", e)
+        localEvaluateVerbalAnswer(spoken, expected)
+    }
+}
+
+suspend fun generateTwinQuiz(
+    deckName: String,
+    cards: List<com.example.data.Flashcard>,
+    twinName: String
+): List<com.example.ui.QuizQuestion> {
+    if (!com.example.api.GeminiClient.isApiKeyAvailable()) {
+        // Fallback: generate mock questions based on the actual cards
+        return cards.take(5).mapIndexed { index, card ->
+            val options = mutableListOf(card.answer)
+            val distractors = cards.filter { it.answer != card.answer }.map { it.answer }.shuffled().take(3)
+            options.addAll(distractors)
+            while (options.size < 4) {
+                options.add("Distractor ${options.size + 1} for concept check")
+            }
+            com.example.ui.QuizQuestion(
+                question = "Conceptual check for: ${card.question}",
+                options = options.shuffled(),
+                correctAnswer = card.answer,
+                explanation = "Your twin recommends reviewing this concept: ${card.answer}"
+            )
+        }
+    }
+
+    val cardsPromptText = cards.take(15).joinToString("\n") { "Q: ${it.question} | A: ${it.answer}" }
+    val prompt = """
+        You are the user's Socratic Digital Twin ($twinName). Based on the following flashcards from the deck "$deckName", generate a high-quality 5-question multiple-choice quiz to test concept retention.
+        
+        Flashcards:
+        $cardsPromptText
+        
+        Design 5 conceptually challenging multiple-choice questions (MCQs) that target the core definitions, processes, and concepts in these flashcards. Ensure your questions test active comprehension, not just surface-level word matching.
+        
+        The output format must be a raw JSON array of exactly 5 objects. Each object in the array represents a question with:
+        - "question": string
+        - "options": list of exactly 4 distinct options
+        - "correctAnswer": string (matching exactly one of the options)
+        - "explanation": string (explaining the correct answer conceptually as their Socratic Twin, referencing the concept)
+        
+        Output strictly raw JSON format. Do not wrap in markdown or backticks. Start with [ and end with ]:
+    """.trimIndent()
+
+    val response = com.example.api.GeminiClient.generate(prompt, "You are a warm and helpful Socratic Digital Twin who creates conceptual quizzes.")
+    
+    val list = mutableListOf<com.example.ui.QuizQuestion>()
+    try {
+        var clean = response.trim()
+        if (clean.contains("JSON_START") && clean.contains("JSON_END")) {
+            val start = clean.indexOf("JSON_START") + "JSON_START".length
+            val end = clean.indexOf("JSON_END")
+            clean = clean.substring(start, end).trim()
+        } else {
+            val firstArray = clean.indexOf('[')
+            if (firstArray != -1) {
+                val lastArray = clean.lastIndexOf(']')
+                if (lastArray != -1) {
+                    clean = clean.substring(firstArray, lastArray + 1)
+                }
+            }
+        }
+        
+        val jsonArray = org.json.JSONArray(clean)
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+            val q = obj.getString("question")
+            val optsArray = obj.getJSONArray("options")
+            val opts = mutableListOf<String>()
+            for (j in 0 until optsArray.length()) {
+                opts.add(optsArray.getString(j))
+            }
+            val ans = obj.getString("correctAnswer")
+            val exp = obj.optString("explanation", "")
+            list.add(com.example.ui.QuizQuestion(q, opts, ans, exp))
+        }
+    } catch (e: Exception) {
+        Log.e("neurolearn", "Error generating/parsing twin quiz", e)
+        return cards.take(5).mapIndexed { index, card ->
+            val options = mutableListOf(card.answer)
+            val distractors = cards.filter { it.answer != card.answer }.map { it.answer }.shuffled().take(3)
+            options.addAll(distractors)
+            while (options.size < 4) {
+                options.add("Distractor ${options.size + 1} for concept check")
+            }
+            com.example.ui.QuizQuestion(
+                question = "Conceptual check for: ${card.question}",
+                options = options.shuffled(),
+                correctAnswer = card.answer,
+                explanation = "Your twin recommends reviewing this concept: ${card.answer}"
+            )
+        }
+    }
+    return list
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TwinStudyChatDrawer(
+    deckId: String,
+    currentCard: Flashcard?,
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit,
+    twinName: String,
+    twinAvatar: String,
+    avatarRes: Int
+) {
+    val messages by viewModel.activeChatMessages.collectAsState()
+    val isLoading by viewModel.isAILoading.collectAsState()
+    var inputText by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    // Auto-scroll chat to latest message
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.65f)
+            .testTag("twin_study_chat_drawer"),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Drag handle and Title Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp, 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = avatarRes),
+                        contentDescription = "AI Twin Avatar",
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Column {
+                        Text(
+                            text = twinName,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Deck & Flashcard Assistant",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Close Chat")
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+
+            // Scrollable Messages List
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item { Spacer(modifier = Modifier.height(10.dp)) }
+
+                items(messages) { msg ->
+                    InlineChatBubble(message = msg, twinAvatar = twinAvatar)
+                }
+
+                if (isLoading) {
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(id = avatarRes),
+                                contentDescription = "AI Twin Avatar",
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 1.5.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "$twinName is analyzing...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                item { Spacer(modifier = Modifier.height(10.dp)) }
+            }
+
+            // Quick contextual chips about the current card
+            if (currentCard != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val promptChips = listOf(
+                        "Explain this card 💡",
+                        "Give me an analogy 🧩",
+                        "Real-world example 🌍",
+                        "What is a key concept? 🔑"
+                    )
+                    promptChips.forEach { promptText ->
+                        SuggestionChip(
+                            onClick = {
+                                viewModel.sendMessageToTutor(
+                                    conceptId = null,
+                                    deckId = deckId,
+                                    userText = promptText,
+                                    currentCard = currentCard
+                                )
+                            },
+                            label = { Text(promptText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                labelColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        )
+                    }
+                }
+            }
+
+            // Input bar with text field and Send button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    placeholder = { 
+                        Text(
+                            text = "Ask twin about concepts...",
+                            fontSize = 13.sp
+                        ) 
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("twin_study_chat_input"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    maxLines = 3,
+                    trailingIcon = {
+                        if (inputText.isNotBlank()) {
+                            IconButton(
+                                onClick = {
+                                    val textToSend = inputText
+                                    inputText = ""
+                                    viewModel.sendMessageToTutor(
+                                        conceptId = null,
+                                        deckId = deckId,
+                                        userText = textToSend,
+                                        currentCard = currentCard
+                                    )
+                                },
+                                modifier = Modifier.testTag("twin_study_chat_send_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = "Send Message",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun InlineChatBubble(message: ChatMessage, twinAvatar: String) {
+    val isUser = message.role == "user"
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top
+    ) {
+        if (!isUser) {
+            val avatarRes = when (twinAvatar) {
+                "tech" -> R.drawable.img_twin_tech
+                "scholar" -> R.drawable.img_twin_scholar
+                "creative" -> R.drawable.img_twin_creative
+                else -> R.drawable.img_twin_socratic
+            }
+            Image(
+                painter = painterResource(id = avatarRes),
+                contentDescription = "AI Twin Avatar",
+                modifier = Modifier
+                    .padding(end = 8.dp, top = 4.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
+        
+        Box(
+            modifier = Modifier
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 12.dp,
+                        topEnd = 12.dp,
+                        bottomStart = if (isUser) 12.dp else 4.dp,
+                        bottomEnd = if (isUser) 4.dp else 12.dp
+                    )
+                )
+                .background(
+                    if (isUser) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .widthIn(max = 240.dp)
+        ) {
+            Text(
+                text = message.text,
+                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 18.sp),
+                color = if (isUser) MaterialTheme.colorScheme.onPrimary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 
 

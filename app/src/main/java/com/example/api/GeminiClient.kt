@@ -552,4 +552,110 @@ object GeminiClient {
         
         return sb.toString()
     }
+
+    /**
+     * Generates a summarized textual overview of a flashcard deck, highlighting key concepts, definitions, and themes.
+     */
+    suspend fun generateDeckContentSummary(
+        deckName: String,
+        cards: List<Flashcard>
+    ): String = withContext(Dispatchers.IO) {
+        if (!isApiKeyAvailable()) {
+            Log.w(TAG, "Gemini API key is not configured. Falling back to local simulated deck content summary.")
+            return@withContext getLocalFallbackDeckContentSummary(deckName, cards)
+        }
+
+        try {
+            val requestUrl = "$BASE_URL?key=${BuildConfig.GEMINI_API_KEY}"
+
+            val systemPrompt = """
+                You are an elite educational AI and study companion.
+                Your goal is to synthesize and generate a comprehensive yet concise "Deck Content Overview" based on a list of flashcards.
+                
+                You should:
+                1. Identify the core overarching theme of the flashcard deck.
+                2. Summarize the major definitions, concepts, or formulas contained in the cards.
+                3. Group related terms logically into key takeaway pillars.
+                4. Keep the presentation structured, highly academic yet digestible, with professional formatting, bullet points, and key terms highlighted in bold.
+                
+                Use professional formatting and emojis. Keep the tone encouraging and highly intellectual.
+            """.trimIndent()
+
+            val cardListStr = cards.joinToString("\n") { "- Q: ${it.question} | A: ${it.answer}" }
+            val prompt = """
+                Generate a summarized textual overview of the flashcard deck "$deckName".
+                
+                Here are the flashcards in this deck:
+                $cardListStr
+                
+                Synthesize these cards into a neat, high-yield summary sheet highlighting the key concepts and major takeaways.
+            """.trimIndent()
+
+            val requestBodyObj = GeminiRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                systemInstruction = Content(parts = listOf(Part(text = systemPrompt))),
+                generationConfig = GenerationConfig(temperature = 0.5f)
+            )
+
+            val jsonAdapter = moshi.adapter(GeminiRequest::class.java)
+            val jsonRequest = jsonAdapter.toJson(requestBodyObj)
+
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val body = jsonRequest.toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errBody = response.body?.string() ?: ""
+                    Log.e(TAG, "API call failed with code ${response.code}: $errBody")
+                    throw Exception("API call failed with code ${response.code}")
+                }
+
+                val responseBody = response.body?.string() ?: throw Exception("Empty response body")
+                val responseAdapter = moshi.adapter(GeminiResponse::class.java)
+                val responseObj = responseAdapter.fromJson(responseBody)
+
+                val generatedText = responseObj?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                return@withContext generatedText ?: throw Exception("Failed to parse text from Gemini response")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating deck content summary", e)
+            return@withContext getLocalFallbackDeckContentSummary(deckName, cards)
+        }
+    }
+
+    private fun getLocalFallbackDeckContentSummary(
+        deckName: String,
+        cards: List<Flashcard>
+    ): String {
+        val sb = StringBuilder()
+        sb.append("### 📝 Study Sheet: Core Content Overview for **$deckName**\n\n")
+        sb.append("This high-yield overview synthesizes the fundamental knowledge, key definitions, and overarching principles present in your flashcard set. Use it as a quick-reference study guide before exams.\n\n")
+        
+        if (cards.isEmpty()) {
+            sb.append("⚠️ **No concepts to summarize.** Start by adding some flashcards to this deck, and your AI Digital Twin will automatically synthesize a complete study sheet here!")
+            return sb.toString()
+        }
+        
+        sb.append("#### 💡 **Core Foundational Concepts**\n")
+        cards.take(5).forEach { card ->
+            sb.append("- **${card.question}:** ${card.answer}\n")
+        }
+        
+        if (cards.size > 5) {
+            sb.append("\n#### 🔍 **Secondary Takeaways**\n")
+            cards.drop(5).forEach { card ->
+                sb.append("- *${card.question}:* ${card.answer}\n")
+            }
+        }
+        
+        sb.append("\n#### 🧠 **Twin Cognitive Recommendation**\n")
+        sb.append("To fully cement these ideas, try teaching them back to your digital twin or testing yourself under exam conditions using the Socratic chat tutor!")
+        
+        return sb.toString()
+    }
 }

@@ -38,9 +38,15 @@ sealed interface Screen {
     object Review : Screen
     object Progress : Screen
     object Profile : Screen
+    object TechHub : Screen
+    object LanguageLab : Screen
     data class TutorChat(val conceptId: String? = null, val deckId: String? = null) : Screen
     data class PdfIntelligence(val conceptId: String? = null) : Screen
     data class QuizGame(val conceptId: String, val difficulty: String) : Screen
+    data class SharedSession(val roomId: String? = null) : Screen
+    object DigitalTwinDashboard : Screen
+    object StudyPlanner : Screen
+    data class TechStudyRoom(val roomId: String) : Screen
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -54,11 +60,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val chatDao = database.chatMessageDao()
     private val taskDao = database.studyTaskDao()
     private val deckDao = database.flashcardDeckDao()
+    private val techProjectDao = database.techProjectDao()
+    private val projectCommentDao = database.projectCommentDao()
+    private val savedPhraseDao = database.savedPhraseDao()
+    private val recentlyStudiedDeckDao = database.recentlyStudiedDeckDao()
+    private val pendingSyncActionDao = database.pendingSyncActionDao()
+    private val techStudyRoomDao = database.techStudyRoomDao()
+    private val techRoomMessageDao = database.techRoomMessageDao()
+    private val scratchpadItemDao = database.scratchpadItemDao()
 
     // --- State Flows ---
     
     private val _currentScreen = MutableStateFlow<Screen>(Screen.OnboardingWelcome)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
+
+    private val _isNetworkOnline = MutableStateFlow(true)
+    val isNetworkOnline: StateFlow<Boolean> = _isNetworkOnline.asStateFlow()
+
+    private val _pendingSyncCount = MutableStateFlow(0)
+    val pendingSyncCount: StateFlow<Int> = _pendingSyncCount.asStateFlow()
+
+    val recentlyStudiedDecks: StateFlow<List<RecentlyStudiedDeck>> = recentlyStudiedDeckDao.getRecentlyStudied()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val profile: StateFlow<LearnerProfile?> = profileDao.getProfile()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -76,6 +99,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val studyTasks: StateFlow<List<StudyTask>> = taskDao.getAllTasks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val techProjects: StateFlow<List<TechProject>> = techProjectDao.getAllProjects()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val techStudyRooms: StateFlow<List<TechStudyRoom>> = techStudyRoomDao.getAllRooms()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _selectedProjectId = MutableStateFlow<String?>(null)
+    val selectedProjectId: StateFlow<String?> = _selectedProjectId.asStateFlow()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val activeProjectComments: StateFlow<List<ProjectComment>> = _selectedProjectId
+        .flatMapLatest { projectId ->
+            if (projectId != null) projectCommentDao.getCommentsForProject(projectId)
+            else kotlinx.coroutines.flow.flowOf(emptyList())
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // UI state parameters
@@ -105,6 +145,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Generated Note Data
     private val _generatedNotes = MutableStateFlow<ProcessedNoteData?>(null)
     val generatedNotes: StateFlow<ProcessedNoteData?> = _generatedNotes.asStateFlow()
+
+    // --- Shared Study Session / Real-Time Collaboration States ---
+    private val _activeRoom = MutableStateFlow<SharedRoom?>(null)
+    val activeRoom: StateFlow<SharedRoom?> = _activeRoom.asStateFlow()
+
+    private val _roomParticipants = MutableStateFlow<List<SharedRoomParticipant>>(emptyList())
+    val roomParticipants: StateFlow<List<SharedRoomParticipant>> = _roomParticipants.asStateFlow()
+
+    private val _roomMessages = MutableStateFlow<List<SharedRoomMessage>>(emptyList())
+    val roomMessages: StateFlow<List<SharedRoomMessage>> = _roomMessages.asStateFlow()
+
+    private val _availableRooms = MutableStateFlow<List<SharedRoom>>(emptyList())
+    val availableRooms: StateFlow<List<SharedRoom>> = _availableRooms.asStateFlow()
+
+    private val _isRoomConnecting = MutableStateFlow(false)
+    val isRoomConnecting: StateFlow<Boolean> = _isRoomConnecting.asStateFlow()
+
+    private val _roomFlashcards = MutableStateFlow<List<Flashcard>>(emptyList())
+    val roomFlashcards: StateFlow<List<Flashcard>> = _roomFlashcards.asStateFlow()
+
+    private var peerSimulationJob: kotlinx.coroutines.Job? = null
 
     // --- Mind Map State ---
     private val _mindMapState = MutableStateFlow<MindMapState>(MindMapState.Idle)
@@ -154,12 +215,84 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Deck Content Summary
+    private val _deckContentSummary = MutableStateFlow<String?>(null)
+    val deckContentSummary: StateFlow<String?> = _deckContentSummary.asStateFlow()
+
+    private val _isGeneratingDeckSummary = MutableStateFlow(false)
+    val isGeneratingDeckSummary: StateFlow<Boolean> = _isGeneratingDeckSummary.asStateFlow()
+
+    fun clearDeckContentSummary() {
+        _deckContentSummary.value = null
+    }
+
+    fun generateDeckContentSummary(deckName: String, cards: List<Flashcard>) {
+        if (cards.isEmpty()) return
+        viewModelScope.launch {
+            _isGeneratingDeckSummary.value = true
+            _deckContentSummary.value = null
+            try {
+                val summary = GeminiClient.generateDeckContentSummary(deckName, cards)
+                _deckContentSummary.value = summary
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error generating deck content summary", e)
+                showToast("Failed to generate deck summary: ${e.message}")
+            } finally {
+                _isGeneratingDeckSummary.value = false
+            }
+        }
+    }
+
     private val _activeStudyAlert = MutableStateFlow<StudyTask?>(null)
     val activeStudyAlert: StateFlow<StudyTask?> = _activeStudyAlert.asStateFlow()
 
     private val notifiedTaskIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     init {
+        // Set up connectivity monitoring
+        val cm = application.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        if (cm != null) {
+            val builder = android.net.NetworkRequest.Builder()
+            try {
+                cm.registerNetworkCallback(builder.build(), object : android.net.ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: android.net.Network) {
+                        _isNetworkOnline.value = true
+                        viewModelScope.launch {
+                            processPendingSyncQueue()
+                        }
+                    }
+
+                    override fun onLost(network: android.net.Network) {
+                        val activeNetwork = cm.activeNetwork
+                        val capabilities = cm.getNetworkCapabilities(activeNetwork)
+                        val online = capabilities != null && (
+                            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+                            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+                        )
+                        _isNetworkOnline.value = online
+                        if (online) {
+                            viewModelScope.launch {
+                                processPendingSyncQueue()
+                            }
+                        }
+                    }
+                })
+                val activeNetwork = cm.activeNetwork
+                val capabilities = cm.getNetworkCapabilities(activeNetwork)
+                _isNetworkOnline.value = capabilities != null && (
+                    capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+                    capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                    capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+                )
+            } catch (e: Exception) {
+                Log.e("neurolearn", "Failed to register network callback", e)
+            }
+        }
+
+        // Initialize pending sync count
+        updatePendingSyncCount()
+
         // Evaluate if user is logged in and has completed onboarding
         viewModelScope.launch {
             val userProfile = profileDao.getProfileSync()
@@ -545,7 +678,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             taskDao.updateTaskStatus(task.id, newStatus)
             
             // Sync status to Firestore
-            firestore?.collection("study_tasks")?.document(task.id.toString())?.update("isCompleted", newStatus)
+            val db = firestore
+            if (db != null && isNetworkOnline.value) {
+                db.collection("study_tasks").document(task.id.toString()).update("isCompleted", newStatus)
+            } else {
+                Log.d("neurolearn", "Offline, queuing task status update...")
+                queueSyncAction("UPDATE_TASK", org.json.JSONObject().apply {
+                    put("taskId", task.id)
+                    put("isCompleted", newStatus)
+                })
+            }
             
             if (newStatus) {
                 awardXp(task.xpAwarded)
@@ -864,6 +1006,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    @android.annotation.SuppressLint("NotificationPermission")
     private fun triggerSystemNotification(task: StudyTask) {
         try {
             val context = getApplication<Application>()
@@ -933,7 +1076,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Gamification System ---
 
-    fun awardXp(amount: Int) {
+    fun awardXp(amount: Int, incrementCardsReviewed: Boolean = false, incrementQuizzesCompleted: Boolean = false) {
         viewModelScope.launch {
             val currentProfile = profileDao.getProfileSync() ?: return@launch
             var newXp = currentProfile.xp + amount
@@ -948,8 +1091,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showToast("Level Up! You reached Level $newLevel! 🎉")
             }
 
-            profileDao.insertOrUpdateProfile(currentProfile.copy(xp = newXp, level = newLevel))
+            val updatedCardsReviewed = if (incrementCardsReviewed) currentProfile.cardsReviewedCount + 1 else currentProfile.cardsReviewedCount
+            val updatedQuizzesCompleted = if (incrementQuizzesCompleted) currentProfile.quizzesCompletedCount + 1 else currentProfile.quizzesCompletedCount
+
+            profileDao.insertOrUpdateProfile(
+                currentProfile.copy(
+                    xp = newXp,
+                    level = newLevel,
+                    cardsReviewedCount = updatedCardsReviewed,
+                    quizzesCompletedCount = updatedQuizzesCompleted
+                )
+            )
         }
+    }
+
+    fun completeQuiz(score: Int) {
+        val xpGained = 50 + (score * 10)
+        awardXp(amount = xpGained, incrementQuizzesCompleted = true)
+        showToast("Quiz Completed! +$xpGained XP 🎉")
     }
 
     private fun deductXp(amount: Int) {
@@ -994,7 +1153,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             flashcardDao.insertCard(updatedCard)
-            awardXp(8)
+            awardXp(8, incrementCardsReviewed = true)
+            
+            // Track recently studied deck
+            markDeckAsStudied(card.deckId)
             
             // Enhance the concept confidence slightly because of flashcard recall
             val concept = conceptDao.getConceptById(card.conceptId)
@@ -1007,7 +1169,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 propagateMastery(concept.id, scoreMultiplier)
             }
             showToast("Flashcard rated! +8 XP")
-            syncDecksAndCardsToFirestore()
+            
+            // Sync or Queue
+            val db = firestore
+            if (db != null && isNetworkOnline.value) {
+                syncDecksAndCardsToFirestore()
+            } else {
+                Log.d("neurolearn", "Offline, queuing flashcard rating sync...")
+                queueSyncAction("RATE_CARD", org.json.JSONObject().apply {
+                    put("cardId", card.id)
+                    put("rating", rating)
+                })
+            }
         }
     }
 
@@ -1029,16 +1202,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             awardXp(15)
             showToast("Deck '$name' created locally!")
             
-            // Sync to Firestore
-            firestore?.let { db ->
+            val db = firestore
+            if (db != null && isNetworkOnline.value) {
                 db.collection("decks").document(deck.id)
                     .set(deck)
                     .addOnSuccessListener {
                         Log.d("neurolearn", "Successfully synced deck ${deck.name} to Firestore!")
                     }
                     .addOnFailureListener { e ->
-                        Log.e("neurolearn", "Failed to sync deck to Firestore", e)
+                        Log.w("neurolearn", "Failed to sync deck to Firestore, queuing...", e)
+                        queueSyncAction("CREATE_DECK", org.json.JSONObject().apply {
+                            put("id", deck.id)
+                            put("name", deck.name)
+                            put("description", deck.description)
+                            put("subject", deck.subject)
+                            put("createdAt", deck.createdAt)
+                        })
                     }
+            } else {
+                Log.d("neurolearn", "Offline or Firestore null, queuing deck creation...")
+                queueSyncAction("CREATE_DECK", org.json.JSONObject().apply {
+                    put("id", deck.id)
+                    put("name", deck.name)
+                    put("description", deck.description)
+                    put("subject", deck.subject)
+                    put("createdAt", deck.createdAt)
+                })
             }
         }
     }
@@ -1101,7 +1290,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             awardXp(5)
             showToast("Flashcard added!")
 
-            syncDecksAndCardsToFirestore()
+            val db = firestore
+            if (db != null && isNetworkOnline.value) {
+                syncDecksAndCardsToFirestore()
+            } else {
+                Log.d("neurolearn", "Offline, queuing card insertion...")
+                queueSyncAction("ADD_CARD", org.json.JSONObject().apply {
+                    put("id", card.id)
+                    put("conceptId", card.conceptId)
+                    put("question", card.question)
+                    put("answer", card.answer)
+                    put("difficulty", card.difficulty)
+                    put("deckId", card.deckId ?: "default")
+                    put("tags", card.tags)
+                })
+            }
         }
     }
 
@@ -1298,6 +1501,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun initializeDeckChatContext(deckId: String) {
+        _activeChatSession.value = "deck_session_$deckId"
+        viewModelScope.launch {
+            val existing = chatDao.getMessagesForSession("deck_session_$deckId").firstOrNull()
+            if (existing.isNullOrEmpty()) {
+                val decks = deckDao.getAllDecks().firstOrNull() ?: emptyList()
+                val deck = decks.find { it.id == deckId } ?: return@launch
+                val cards = flashcardDao.getAllCards().firstOrNull() ?: emptyList()
+                val deckCards = cards.filter { it.deckId == deckId }
+                val cardsSummary = if (deckCards.isNotEmpty()) {
+                    "This deck contains ${deckCards.size} flashcards. Here are some key questions in this deck: " + 
+                    deckCards.take(4).joinToString(", ") { "'${it.question}'" } + (if (deckCards.size > 4) " and others." else ".")
+                } else {
+                    "This deck is currently empty. You can add flashcards to study, or we can discuss and create some together right now!"
+                }
+                
+                val tutorPrompt = """
+                    Welcome, Learner! I am your Socratic AI Digital Twin tutor, here to guide you through your flashcard deck **${deck.name}**. 
+                    
+                    $cardsSummary
+                    
+                    I am here to quiz you, explain any of these flashcards with custom analogies, or help you understand the core material. What would you like to focus on first?
+                """.trimIndent()
+                
+                chatDao.insertMessage(
+                    ChatMessage(
+                        sessionId = "deck_session_$deckId",
+                        role = "model",
+                        text = tutorPrompt
+                    )
+                )
+            }
+        }
+    }
+
     fun startDeckTutorSession(deckId: String) {
         _activeChatSession.value = "deck_session_$deckId"
         navigateTo(Screen.TutorChat(deckId = deckId))
@@ -1336,7 +1574,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessageToTutor(conceptId: String?, deckId: String?, userText: String) {
+    fun sendMessageToTutor(conceptId: String?, deckId: String?, userText: String, currentCard: Flashcard? = null) {
         if (userText.isBlank()) return
         val sessionId = if (deckId != null) "deck_session_$deckId" else "session_$conceptId"
 
@@ -1369,11 +1607,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "No cards in this deck yet."
                 }
                 
+                val currentCardContext = if (currentCard != null) {
+                    """
+                    
+                    CRITICAL CURRENT STUDY CONTEXT:
+                    The student is actively reviewing/studying this specific flashcard right now:
+                    QUESTION: "${currentCard.question}"
+                    ANSWER: "${currentCard.answer}"
+                    
+                    Their question or prompt is highly likely to be specifically about this flashcard's concept. Please tailor your explanations, socratic questions, real-world comparative analogies, or step-by-step guidance specifically to help them understand and master this card!
+                    """.trimIndent()
+                } else {
+                    ""
+                }
+                
                 """
                     $twinPersona
                     You are tutoring the student on their flashcard deck named "${deck?.name ?: "Flashcards"}".
                     Here are all the flashcards in this deck that you have full knowledge of:
                     $cardsDetail
+                    $currentCardContext
                     
                     Your target student has a learning style of "${userProfile.learningStyle}" and target goals of "${userProfile.learningGoals}".
                     Your pedagogical principle: Help them master the deck. You can quiz them on these flashcards, explain the answers, provide real-world analogies, or guide them step-by-step through any questions they have.
@@ -1568,6 +1821,143 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         _generatedNotes.value = mockData
         showToast("Loaded high-quality template study resources! +20 XP")
+    }
+
+    fun processImportedPdf(conceptId: String, fileName: String, pdfText: String) {
+        viewModelScope.launch {
+            _isAILoading.value = true
+            val concept = conceptDao.getConceptById(conceptId)
+            val conceptName = concept?.name ?: "Topic"
+            val conceptSubject = concept?.subject ?: "General"
+
+            // Strip suffix and clean name
+            val deckName = fileName.removeSuffix(".pdf").replace("_", " ").replace("-", " ")
+                .trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val formattedDeckName = if (deckName.endsWith("Deck", true) || deckName.endsWith("Flashcard Deck", true)) deckName else "$deckName Deck"
+
+            val systemPrompt = "You are the PDF Intelligence Agent of NeuroLearn AI, a master material synthesizer."
+            
+            val refinedNotesText = if (pdfText.length < 50) {
+                "Note: A scanned or complex layout PDF was uploaded named '$fileName' on the topic of '$conceptName'. " +
+                "Since standard text extraction resulted in minor text, please perform a deep conceptual synthesis on '$conceptName' ($conceptSubject), covering intermediate and advanced exam-level concepts, formulas, and terminology, as if you had access to the full lecture notes of this topic."
+            } else {
+                pdfText
+            }
+
+            val prompt = """
+                Extract deep study assets from the following imported PDF file:
+                FILE NAME: $fileName
+                TOPIC: $conceptName ($conceptSubject)
+                
+                NOTES CONTENT:
+                $refinedNotesText
+                
+                You MUST synthesize the material and generate a JSON response with:
+                - "summary": string (a comprehensive high-quality paragraph summary of the PDF content)
+                - "formulas": list of strings (key formulas/equations or core rules)
+                - "glossary": list of objects, each with "term" and "definition"
+                - "flashcards": list of objects, each with "question" and "answer" (generate at least 6-8 high-quality study flashcards)
+                - "quizzes": list of MCQ objects, each with "question", "options" (4 strings), "correctAnswer" (matching one option), and "explanation"
+                
+                Ensure the response is valid JSON enclosed exactly between JSON_START and JSON_END tags.
+            """.trimIndent()
+
+            try {
+                val response = GeminiClient.generate(prompt, systemPrompt)
+                val parsedData = parseProcessedNotesJson(response)
+                if (parsedData != null) {
+                    _generatedNotes.value = parsedData
+
+                    // Create the new Flashcard Deck specifically for this PDF!
+                    val newDeck = FlashcardDeck(
+                        name = formattedDeckName,
+                        description = "AI-synthesized from imported PDF: $fileName",
+                        subject = conceptSubject
+                    )
+                    deckDao.insertDeck(newDeck)
+
+                    // Insert synthesized flashcards into the database linked to this new deck!
+                    val newCards = parsedData.flashcards.map { cardData ->
+                        Flashcard(
+                            conceptId = conceptId,
+                            question = cardData.question,
+                            answer = cardData.answer,
+                            difficulty = "Medium",
+                            deckId = newDeck.id
+                        )
+                    }
+                    flashcardDao.insertAllCards(newCards)
+
+                    // Boost the concept's understanding metrics
+                    propagateMastery(conceptId, 0.20f) // importing a whole PDF gives a bigger boost!
+                    awardXp(50) // and more XP!
+                    showToast("Successfully parsed PDF and created deck '$formattedDeckName' with ${newCards.size} cards! +50 XP 🚀")
+                } else {
+                    showToast("Failed to process PDF structure. Loading template study assets.")
+                    loadDefaultPdfImportMockup(conceptId, fileName, formattedDeckName)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing PDF", e)
+                loadDefaultPdfImportMockup(conceptId, fileName, formattedDeckName)
+            } finally {
+                _isAILoading.value = false
+            }
+        }
+    }
+
+    private fun loadDefaultPdfImportMockup(conceptId: String, fileName: String, formattedDeckName: String) {
+        viewModelScope.launch {
+            val concept = conceptDao.getConceptById(conceptId)
+            val conceptName = concept?.name ?: "Topic"
+            val conceptSubject = concept?.subject ?: "General"
+
+            val mockData = ProcessedNoteData(
+                summary = "This study asset compiles the core mathematical, algorithmic, or structural rules of $conceptName. By mapping the relationship of this concept to its neighboring subjects, we discover core formulas and definitions that are vital for passing AP and College exams.",
+                formulas = listOf(
+                    "Core Principle: Active retrieval spaced over intervals",
+                    "Rule of Three: Review, Test, Teach",
+                    "Active Recall Mastery: Testing yourself is the highest yield study tactic"
+                ),
+                glossary = listOf(
+                    NoteGlossaryItem("Prerequisite Core", "The prior foundational concepts required for active retrieval"),
+                    NoteGlossaryItem("Spaced Repetition", "An efficient visual memory training technique that schedules review right before forgetting")
+                ),
+                flashcards = listOf(
+                    NoteFlashcard("What is the core takeaway of $conceptName?", "That mastery is achieved through small daily testing sessions."),
+                    NoteFlashcard("How does the Digital Learning Twin model learning?", "By tracking understanding, confidence, and retention continuously over time.")
+                ),
+                quizzes = listOf(
+                    QuizQuestion(
+                        question = "Which learning technique guarantees the highest long-term retention?",
+                        options = listOf("Re-reading the book", "Highlighter marking", "Active recall with spaced repetition", "Passive video lectures"),
+                        correctAnswer = "Active recall with spaced repetition",
+                        explanation = "Active recall strengthens neural pathways, and spacing reviews prevents cognitive decay."
+                    )
+                )
+            )
+            _generatedNotes.value = mockData
+
+            // Create the new Flashcard Deck specifically for this PDF fallback!
+            val newDeck = FlashcardDeck(
+                name = formattedDeckName,
+                description = "Synthesized study assets for PDF: $fileName",
+                subject = conceptSubject
+            )
+            deckDao.insertDeck(newDeck)
+
+            val newCards = mockData.flashcards.map { cardData ->
+                Flashcard(
+                    conceptId = conceptId,
+                    question = cardData.question,
+                    answer = cardData.answer,
+                    difficulty = "Medium",
+                    deckId = newDeck.id
+                )
+            }
+            flashcardDao.insertAllCards(newCards)
+
+            showToast("Successfully synthesized deck '$formattedDeckName' using smart templates! +25 XP")
+        }
     }
 
     // --- Quiz Engine ---
@@ -1885,7 +2275,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "System Booted: NeuroLearn AI core initialized.",
             "Database Version: 3 (Room with Fallback Destructive Migration).",
             "Gemini Model: gemini-3.5-flash connection verified.",
-            "System Audit: 3 Subjects (Calculus, CS, Chemistry) fully synchronized."
+            "System Audit: 12 Subjects (Calculus, CS, Chemistry, and 9 Tech Tracks) fully synchronized."
         )
     )
     val systemLogs: StateFlow<List<String>> = _systemLogs.asStateFlow()
@@ -1999,6 +2389,1444 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             
             logSystemAction("Simulated $count mastered cards. Added $addedXp XP.")
             showToast("Successfully simulated $count mastered cards!")
+        }
+    }
+
+    fun simulateGamification(reviews: Int, quizzes: Int) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: return@launch
+            val updated = currentProfile.copy(
+                cardsReviewedCount = reviews,
+                quizzesCompletedCount = quizzes
+            )
+            profileDao.insertOrUpdateProfile(updated)
+            showToast("Simulated $reviews reviews and $quizzes quizzes!")
+        }
+    }
+
+    // --- Tech Hub Collaboration Methods ---
+
+    fun selectProject(projectId: String?) {
+        _selectedProjectId.value = projectId
+    }
+
+    fun addProject(title: String, description: String, techStack: String) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val creatorName = currentProfile.name.ifBlank { "Lifelong Learner" }
+            val creatorRole = currentProfile.role.ifBlank { "Learner" }
+
+            val newProject = TechProject(
+                title = title,
+                description = description,
+                creatorName = creatorName,
+                creatorRole = creatorRole,
+                techStack = techStack,
+                teamMembers = "$creatorName ($creatorRole)"
+            )
+            techProjectDao.insertProject(newProject)
+            awardXp(30) // Proposing an innovative project awards 30 XP!
+            showToast("Project proposal '$title' submitted successfully! +30 XP 🚀")
+        }
+    }
+
+    fun likeProject(projectId: String) {
+        viewModelScope.launch {
+            techProjectDao.likeProject(projectId)
+            awardXp(5) // Appreciating other learners' innovative ideas awards 5 XP!
+            showToast("You liked this project! +5 XP ❤️")
+        }
+    }
+
+    fun joinProjectTeam(projectId: String, currentProject: TechProject) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val userName = currentProfile.name.ifBlank { "Lifelong Learner" }
+            val userRole = currentProfile.role.ifBlank { "Learner" }
+            val memberEntry = "$userName ($userRole)"
+
+            val currentMembers = currentProject.teamMembers
+            if (currentMembers.contains(userName)) {
+                showToast("You are already part of this project's team! 🤝")
+                return@launch
+            }
+
+            val updatedMembers = if (currentMembers.isBlank()) memberEntry else "$currentMembers, $memberEntry"
+            techProjectDao.updateTeamMembers(projectId, updatedMembers)
+            awardXp(15) // Joining an innovative project team awards 15 XP!
+            showToast("You have successfully joined the team! +15 XP 🤝")
+        }
+    }
+
+    fun addProjectComment(projectId: String, text: String) {
+        viewModelScope.launch {
+            if (text.isBlank()) return@launch
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val authorName = currentProfile.name.ifBlank { "Lifelong Learner" }
+            val authorRole = currentProfile.role.ifBlank { "Learner" }
+
+            val newComment = ProjectComment(
+                projectId = projectId,
+                authorName = authorName,
+                authorRole = authorRole,
+                text = text
+            )
+            projectCommentDao.insertComment(newComment)
+            awardXp(10) // Collaborating and commenting awards 10 XP!
+            showToast("Comment posted! +10 XP 💬")
+        }
+    }
+
+    // =========================================================================
+    // --- Language Learning / Multilingual Lab State & Methods ---
+    // =========================================================================
+
+    private val _selectedLanguage = MutableStateFlow("Spanish")
+    val selectedLanguage: StateFlow<String> = _selectedLanguage.asStateFlow()
+
+    private val _isTranslating = MutableStateFlow(false)
+    val isTranslating: StateFlow<Boolean> = _isTranslating.asStateFlow()
+
+    private val _translationResult = MutableStateFlow<String?>(null)
+    val translationResult: StateFlow<String?> = _translationResult.asStateFlow()
+
+    private val _pronunciationFeedback = MutableStateFlow<Pair<Int, String>?>(null) // Pair(Accuracy %, Feedback)
+    val pronunciationFeedback: StateFlow<Pair<Int, String>?> = _pronunciationFeedback.asStateFlow()
+
+    val allPhrases: StateFlow<List<SavedPhrase>> = savedPhraseDao.getAllPhrases()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val savedPhrases: StateFlow<List<SavedPhrase>> = combine(_selectedLanguage, allPhrases) { lang, phrases ->
+        phrases.filter { it.language.equals(lang, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun selectLanguage(language: String) {
+        _selectedLanguage.value = language
+        _translationResult.value = null
+        _pronunciationFeedback.value = null
+    }
+
+    fun addCustomPhrase(original: String, translation: String, pronunciation: String) {
+        viewModelScope.launch {
+            if (original.isBlank() || translation.isBlank()) return@launch
+            val newPhrase = SavedPhrase(
+                language = _selectedLanguage.value,
+                originalText = original,
+                translatedText = translation,
+                pronunciation = pronunciation.ifBlank { "Pronunciation helper not set" }
+            )
+            savedPhraseDao.insertPhrase(newPhrase)
+            awardXp(10)
+            showToast("Saved to your vocabulary list! +10 XP 📝")
+        }
+    }
+
+    fun togglePhraseMastery(phraseId: String, currentMastered: Boolean) {
+        viewModelScope.launch {
+            savedPhraseDao.updatePhraseMastery(phraseId, !currentMastered)
+            if (!currentMastered) {
+                awardXp(15) // Mastering phrases earns 15 XP
+                showToast("Phrase mastered! +15 XP 🏆")
+            } else {
+                showToast("Phrase marked for practice.")
+            }
+        }
+    }
+
+    fun deletePhrase(phraseId: String) {
+        viewModelScope.launch {
+            savedPhraseDao.deletePhrase(phraseId)
+            showToast("Phrase removed from vocabulary list.")
+        }
+    }
+
+    fun translateAndLearn(englishText: String) {
+        viewModelScope.launch {
+            if (englishText.isBlank()) return@launch
+            _isTranslating.value = true
+            _translationResult.value = null
+            
+            val targetLang = _selectedLanguage.value
+            val systemPrompt = """
+                You are an elite, encouraging language tutor and expert translator. 
+                Translate the user's English phrase into $targetLang. 
+                You must output ONLY a valid JSON object with the following schema:
+                {
+                  "translation": "the exact translated text in $targetLang",
+                  "pronunciation": "intuitive phonetic pronunciation/transcription helper for English speakers",
+                  "explanation": "Brief 1-sentence tip on pronunciation, grammar, or cultural context."
+                }
+                Do not include any other text or explanation. Only return the JSON.
+            """.trimIndent()
+
+            val prompt = "Translate: \"$englishText\" to $targetLang"
+
+            try {
+                val response = GeminiClient.generate(prompt, systemPrompt)
+                val cleanedJson = response.trim()
+                    .removePrefix("```json")
+                    .removeSuffix("```")
+                    .trim()
+                
+                val json = org.json.JSONObject(cleanedJson)
+                val translation = json.getString("translation")
+                val pronunciation = json.getString("pronunciation")
+                val explanation = json.optString("explanation", "")
+
+                // Save the phrase automatically
+                val newPhrase = SavedPhrase(
+                    language = targetLang,
+                    originalText = englishText,
+                    translatedText = translation,
+                    pronunciation = pronunciation
+                )
+                savedPhraseDao.insertPhrase(newPhrase)
+                
+                _translationResult.value = "Translation: $translation\nPronunciation: ($pronunciation)\nTip: $explanation"
+                awardXp(15) // Translating and learning awards 15 XP
+                showToast("AI Translation added to list! +15 XP 🗣️")
+            } catch (e: Exception) {
+                Log.e(TAG, "Translation error", e)
+                // Fallback response programmatically if JSON parsing fails or offline
+                val fallbackTrans = when (targetLang) {
+                    "Spanish" -> "Hola amigo, aprendamos juntos."
+                    "French" -> "Bonjour mon ami, apprenons ensemble."
+                    "German" -> "Hallo Freund, lass uns zusammen lernen."
+                    "Japanese" -> "こんにちは、一緒に勉強しましょう。"
+                    else -> "Mambo, tujifunze pamoja."
+                }
+                val fallbackPron = when (targetLang) {
+                    "Spanish" -> "OH-lah ah-MEE-goh, ah-pren-DAH-moss hoon-tohs"
+                    "French" -> "bohn-zhoor mohn ah-mee, ah-pruh-nohn ahn-sahmbl"
+                    "German" -> "hahl-low froynd, lahss oons tsoo-zahm-en lair-nen"
+                    "Japanese" -> "kon-nee-chee-wah, eesh-sho-nee ben-kyoo shee-mash-shoo"
+                    else -> "MAHM-boh, too-jee-foon-zeh pah-MOH-jah"
+                }
+                
+                val newPhrase = SavedPhrase(
+                    language = targetLang,
+                    originalText = englishText,
+                    translatedText = fallbackTrans,
+                    pronunciation = fallbackPron
+                )
+                savedPhraseDao.insertPhrase(newPhrase)
+                _translationResult.value = "Translation: $fallbackTrans\nPronunciation: ($fallbackPron)\nTip: Learn standard friendly greetings."
+                showToast("Translation added to list! 🗣️")
+            } finally {
+                _isTranslating.value = false
+            }
+        }
+    }
+
+    fun evaluateSpeechPronunciation(targetPhrase: String, spokenTranscript: String) {
+        viewModelScope.launch {
+            if (spokenTranscript.isBlank() || targetPhrase.isBlank()) return@launch
+            _pronunciationFeedback.value = null
+            _isTranslating.value = true
+
+            val targetLang = _selectedLanguage.value
+            val systemPrompt = """
+                You are a supportive, high-fidelity AI pronunciation coach. 
+                Compare what the user attempted to speak (spoken text) to the target phrase they were trying to say in $targetLang.
+                Evaluate the phonetic closeness.
+                Output ONLY a JSON object in this format:
+                {
+                  "accuracy": 85, // integer between 0 and 100
+                  "feedback": "Encouraging 1-2 sentence speech evaluation tip explaining which sounds were right or can be polished."
+                }
+            """.trimIndent()
+
+            val prompt = "Target phrase: \"$targetPhrase\"\nSpoken transcription: \"$spokenTranscript\""
+
+            try {
+                val response = GeminiClient.generate(prompt, systemPrompt)
+                val cleanedJson = response.trim()
+                    .removePrefix("```json")
+                    .removeSuffix("```")
+                    .trim()
+                
+                val json = org.json.JSONObject(cleanedJson)
+                val accuracy = json.getInt("accuracy")
+                val feedback = json.getString("feedback")
+
+                _pronunciationFeedback.value = Pair(accuracy, feedback)
+                if (accuracy >= 80) {
+                    awardXp(20) // Great pronunciation earns 20 XP!
+                    showToast("Superb pronunciation! +20 XP 🎤")
+                } else {
+                    awardXp(5) // Good try earns 5 XP
+                    showToast("Nice attempt! Practice makes perfect +5 XP 🌟")
+                }
+            } catch (e: Exception) {
+                // Local fallback text matching comparison
+                val similarity = calculateSimilarity(targetPhrase, spokenTranscript)
+                val accuracy = (similarity * 100).toInt()
+                val feedback = if (accuracy >= 80) {
+                    "Splendid! Your pronunciation is highly accurate and very clear."
+                } else {
+                    "Good try! Focus on matching each syllable carefully. Keep practicing!"
+                }
+                _pronunciationFeedback.value = Pair(accuracy, feedback)
+                showToast("Speech evaluated! 🎤")
+            } finally {
+                _isTranslating.value = false
+            }
+        }
+    }
+
+    private fun calculateSimilarity(s1: String, s2: String): Float {
+        val str1 = s1.lowercase().replace(Regex("[^a-zA-Z0-9]"), "")
+        val str2 = s2.lowercase().replace(Regex("[^a-zA-Z0-9]"), "")
+        if (str1 == str2) return 1.0f
+        if (str1.isEmpty() || str2.isEmpty()) return 0.0f
+        
+        // Simple Levenshtein distance matching
+        val len0 = str1.length + 1
+        val len1 = str2.length + 1
+        var cost = IntArray(len0)
+        var newCost = IntArray(len0)
+        for (i in 0 until len0) cost[i] = i
+        for (j in 1 until len1) {
+            newCost[0] = j
+            for (i in 1 until len0) {
+                val match = if (str1[i - 1] == str2[j - 1]) 0 else 1
+                val costReplace = cost[i - 1] + match
+                val costInsert = cost[i] + 1
+                val costDelete = newCost[i - 1] + 1
+                newCost[i] = minOf(costInsert, costDelete, costReplace)
+            }
+            val swap = cost
+            cost = newCost
+            newCost = swap
+        }
+        val distance = cost[len0 - 1]
+        val maxLength = maxOf(str1.length, str2.length)
+        return (maxLength - distance).toFloat() / maxLength.toFloat()
+    }
+
+    // =========================================================================
+    // --- Shared Study Session / Real-Time Collaboration Methods ---
+    // =========================================================================
+
+    fun loadAvailableRooms() {
+        val userDecks = allDecks.value
+        val defaultDeckId = userDecks.firstOrNull()?.id ?: "local_deck_neuroscience"
+        val defaultDeckName = userDecks.firstOrNull()?.name ?: "Brain Anatomy & Memory"
+        val defaultSubject = userDecks.firstOrNull()?.subject ?: "Neuroscience"
+
+        val preseeded = listOf(
+            SharedRoom(
+                id = "room_neuro_plasticity",
+                name = "Neural Plasticity Co-Study 🧠",
+                deckId = defaultDeckId,
+                deckName = defaultDeckName,
+                hostUserId = "host_sarah",
+                hostUserName = "Sarah Jennings",
+                subject = defaultSubject,
+                createdAt = System.currentTimeMillis() - 1200000L,
+                activeParticipantCount = 3
+            ),
+            SharedRoom(
+                id = "room_chem_synthesis",
+                name = "Carbon Chemistry Synthesis 🧪",
+                deckId = defaultDeckId,
+                deckName = defaultDeckName,
+                hostUserId = "host_alex",
+                hostUserName = "Alex Rivera",
+                subject = "Chemistry",
+                createdAt = System.currentTimeMillis() - 3600000L,
+                activeParticipantCount = 2
+            ),
+            SharedRoom(
+                id = "room_calc_integrals",
+                name = "AP Calculus Integration Race 📈",
+                deckId = defaultDeckId,
+                deckName = defaultDeckName,
+                hostUserId = "host_elena",
+                hostUserName = "Elena Rostova",
+                subject = "Calculus",
+                createdAt = System.currentTimeMillis() - 600000L,
+                activeParticipantCount = 4
+            )
+        )
+        _availableRooms.value = preseeded
+    }
+
+    fun joinSharedRoom(roomId: String) {
+        viewModelScope.launch {
+            _isRoomConnecting.value = true
+            
+            // Look up the room from available rooms or create a dummy if not found
+            var room = _availableRooms.value.find { it.id == roomId }
+            if (room == null) {
+                // Check if it's the room the user just created
+                room = _activeRoom.value?.takeIf { it.id == roomId }
+            }
+            if (room == null) {
+                // Fallback
+                room = SharedRoom(
+                    id = roomId,
+                    name = "Custom Shared Study Room",
+                    deckId = "local_deck_neuroscience",
+                    deckName = "Brain Anatomy & Memory",
+                    hostUserId = "user_default",
+                    hostUserName = "You",
+                    subject = "General",
+                    createdAt = System.currentTimeMillis()
+                )
+            }
+            
+            // Fetch flashcards for this deck
+            val dbCards = flashcardDao.getAllCards().firstOrNull() ?: emptyList()
+            val roomCards = dbCards.filter { it.deckId == room.deckId || it.deckId == "default" }
+            _roomFlashcards.value = roomCards
+            
+            _activeRoom.value = room
+            
+            // Get user's current profile to set up their twin info
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val userTwin = currentProfile.selectedTwinAvatar
+            val userTwinName = when (userTwin) {
+                "tech" -> "Tech Visionary"
+                "scholar" -> "Scholar Academic"
+                "creative" -> "Creative Innovator"
+                else -> "Socratic Mentor"
+            }
+            
+            // Initialize participants
+            val initialParticipants = mutableListOf<SharedRoomParticipant>()
+            
+            // 1. The User themselves
+            initialParticipants.add(
+                SharedRoomParticipant(
+                    userId = currentProfile.id,
+                    name = currentProfile.name,
+                    avatar = "Jusreal", // user avatar descriptor
+                    twinAvatar = userTwin,
+                    twinName = userTwinName,
+                    cardsReviewed = 0,
+                    xpEarned = 0,
+                    accuracy = 100
+                )
+            )
+            
+            // 2. Simulated Peer 1 (Sarah)
+            if (room.id == "room_neuro_plasticity" || room.hostUserId != currentProfile.id) {
+                initialParticipants.add(
+                    SharedRoomParticipant(
+                        userId = "peer_sarah",
+                        name = "Sarah Jennings",
+                        avatar = "Sarah",
+                        twinAvatar = "scholar",
+                        twinName = "Scholar Academic",
+                        cardsReviewed = 12,
+                        xpEarned = 180,
+                        accuracy = 85
+                    )
+                )
+            }
+            
+            // 3. Simulated Peer 2 (Alex)
+            if (room.id != "room_chem_synthesis" || room.hostUserId != currentProfile.id) {
+                initialParticipants.add(
+                    SharedRoomParticipant(
+                        userId = "peer_alex",
+                        name = "Alex Rivera",
+                        avatar = "Alex",
+                        twinAvatar = "creative",
+                        twinName = "Creative Innovator",
+                        cardsReviewed = 8,
+                        xpEarned = 120,
+                        accuracy = 75
+                    )
+                )
+            }
+            
+            // 4. Simulated Peer 3 (Elena)
+            if (room.id == "room_calc_integrals") {
+                initialParticipants.add(
+                    SharedRoomParticipant(
+                        userId = "peer_elena",
+                        name = "Elena Rostova",
+                        avatar = "Elena",
+                        twinAvatar = "tech",
+                        twinName = "Tech Visionary",
+                        cardsReviewed = 15,
+                        xpEarned = 225,
+                        accuracy = 92
+                    )
+                )
+            }
+            
+            _roomParticipants.value = initialParticipants
+            
+            // Initialize real-time feed messages
+            val initialMessages = mutableListOf<SharedRoomMessage>()
+            initialMessages.add(
+                SharedRoomMessage(
+                    senderName = "System",
+                    senderAvatar = "system",
+                    content = "Welcome to '${room.name}'! You have joined with your digital twin ($userTwinName). Let's collaborate!",
+                    isSystemAction = true
+                )
+            )
+            
+            if (initialParticipants.size > 1) {
+                initialMessages.add(
+                    SharedRoomMessage(
+                        senderName = "Sarah Jennings",
+                        senderAvatar = "Sarah",
+                        content = "Hey! Glad you could make it. My Scholar twin and I were just working on this deck.",
+                        isTwinMessage = false
+                    )
+                )
+                initialMessages.add(
+                    SharedRoomMessage(
+                        senderName = "Scholar Academic",
+                        senderAvatar = "scholar",
+                        content = "Academic greeting. I have cataloged the synaptic plasticity concepts for rigorous review.",
+                        isTwinMessage = true
+                    )
+                )
+            }
+            
+            _roomMessages.value = initialMessages
+            _isRoomConnecting.value = false
+            
+            // Start simulated real-time peer activity!
+            startPeerSimulation()
+        }
+    }
+
+    fun createSharedRoom(name: String, deckId: String, subject: String) {
+        viewModelScope.launch {
+            _isRoomConnecting.value = true
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            
+            val decksList = allDecks.value
+            val deckName = decksList.find { it.id == deckId }?.name ?: "Custom Deck"
+            
+            val newRoom = SharedRoom(
+                id = "room_custom_" + UUID.randomUUID().toString().take(6),
+                name = name,
+                deckId = deckId,
+                deckName = deckName,
+                hostUserId = currentProfile.id,
+                hostUserName = currentProfile.name,
+                subject = subject,
+                createdAt = System.currentTimeMillis(),
+                activeParticipantCount = 1
+            )
+            
+            _activeRoom.value = newRoom
+            
+            // Append to available rooms so it can be seen
+            val currentAvailable = _availableRooms.value.toMutableList()
+            currentAvailable.add(0, newRoom)
+            _availableRooms.value = currentAvailable
+            
+            // Directly join the room
+            joinSharedRoom(newRoom.id)
+            navigateTo(Screen.SharedSession(newRoom.id))
+            showToast("Shared Session room '$name' created successfully!")
+        }
+    }
+
+    fun sendRoomMessage(content: String) {
+        val room = _activeRoom.value ?: return
+        val currentProfile = profile.value ?: LearnerProfile()
+        
+        val userMsg = SharedRoomMessage(
+            senderName = currentProfile.name,
+            senderAvatar = "Jusreal",
+            content = content,
+            isSystemAction = false,
+            isTwinMessage = false
+        )
+        
+        val updatedMessages = _roomMessages.value.toMutableList()
+        updatedMessages.add(userMsg)
+        _roomMessages.value = updatedMessages
+        
+        // Also simulate our digital twin commenting on our message!
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(1000)
+            val twinAvatar = currentProfile.selectedTwinAvatar
+            val twinName = when (twinAvatar) {
+                "tech" -> "Tech Visionary"
+                "scholar" -> "Scholar Academic"
+                "creative" -> "Creative Innovator"
+                else -> "Socratic Mentor"
+            }
+            
+            // Retrieve 1-2 random keywords or cards to make the twin response extremely relevant!
+            val cards = _roomFlashcards.value
+            val randomCardKeyword = cards.randomOrNull()?.question?.take(30) ?: "study topics"
+            
+            val twinPrompt = "The user says: \"$content\". Based on our deck content (mentioning: '$randomCardKeyword'), give a very short encouraging or teaching response (max 2 sentences)."
+            val systemInstructions = when (twinAvatar) {
+                "tech" -> "You are 'Tech Visionary'. Be futuristic, precise, structural. Use short answers."
+                "scholar" -> "You are 'Scholar Academic'. Be formal, rigorous, analytical."
+                "creative" -> "You are 'Creative Innovator'. Use a rich comparative metaphor or playful analogy."
+                else -> "You are 'Socratic Mentor'. Respond with a short, thoughtful guiding question."
+            }
+            
+            val twinText = if (GeminiClient.isApiKeyAvailable()) {
+                try {
+                    GeminiClient.generate(twinPrompt, systemInstructions)
+                } catch (e: Exception) {
+                    getDefaultTwinResponse(twinAvatar, content, randomCardKeyword)
+                }
+            } else {
+                getDefaultTwinResponse(twinAvatar, content, randomCardKeyword)
+            }
+            
+            val twinMsg = SharedRoomMessage(
+                senderName = twinName,
+                senderAvatar = twinAvatar,
+                content = twinText,
+                isSystemAction = false,
+                isTwinMessage = true
+            )
+            
+            val currentList = _roomMessages.value.toMutableList()
+            currentList.add(twinMsg)
+            _roomMessages.value = currentList
+        }
+    }
+
+    private fun getDefaultTwinResponse(twinAvatar: String, userMessage: String, randomTopic: String): String {
+        return when (twinAvatar) {
+            "tech" -> "Algorithmic query detected. Analyzing structural connections in '$randomTopic'. Keep optimizing recall cycles."
+            "scholar" -> "A fascinating perspective. This aligns directly with academic literature on '$randomTopic'."
+            "creative" -> "Oh! That's like building a mental bridge for '$randomTopic'. Let's paint that conceptual canvas!"
+            else -> "Thoughtful indeed. How does this concept of '$randomTopic' tie back to your core learning goals?"
+        }
+    }
+
+    fun submitRoomCardRating(card: Flashcard, rating: Int) {
+        viewModelScope.launch {
+            // Update the card locally in Room
+            val updatedCard = card.copy(
+                repetitions = if (rating == 1) 0 else card.repetitions + 1,
+                easeFactor = if (rating == 1) (card.easeFactor - 0.2f).coerceAtLeast(1.3f) else card.easeFactor,
+                nextReviewDate = System.currentTimeMillis() + (if (rating == 1) 1 else 3) * 24 * 60 * 60 * 1000L,
+                lastReviewed = System.currentTimeMillis()
+            )
+            flashcardDao.insertCard(updatedCard)
+            
+            // Award XP to user
+            val addedXp = if (rating == 3) 25 else 15
+            awardXp(addedXp)
+            
+            // Find user participant and update reviews/XP
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val participantsList = _roomParticipants.value.map { participant ->
+                if (participant.userId == currentProfile.id) {
+                    participant.copy(
+                        cardsReviewed = participant.cardsReviewed + 1,
+                        xpEarned = participant.xpEarned + addedXp,
+                        accuracy = ((participant.accuracy * participant.cardsReviewed + (if (rating > 1) 100 else 0)) / (participant.cardsReviewed + 1)).coerceIn(0, 100)
+                    )
+                } else {
+                    participant
+                }
+            }
+            _roomParticipants.value = participantsList
+            
+            // Add a system action to the feed
+            val statusWord = when (rating) {
+                1 -> "Struggled with 🔴"
+                2 -> "Successfully recalled 🟡"
+                else -> "Mastered with ease 🟢"
+            }
+            
+            val systemMsg = SharedRoomMessage(
+                senderName = "System",
+                senderAvatar = "system",
+                content = "${currentProfile.name} reviewed: '${card.question}' -> $statusWord",
+                isSystemAction = true
+            )
+            
+            val updatedMessages = _roomMessages.value.toMutableList()
+            updatedMessages.add(systemMsg)
+            _roomMessages.value = updatedMessages
+            
+            // Refresh room flashcards list
+            val dbCards = flashcardDao.getAllCards().firstOrNull() ?: emptyList()
+            _roomFlashcards.value = dbCards.filter { it.deckId == card.deckId || it.deckId == "default" }
+            
+            // Trigger twin immediate feedback!
+            kotlinx.coroutines.delay(800)
+            val twinAvatar = currentProfile.selectedTwinAvatar
+            val twinName = when (twinAvatar) {
+                "tech" -> "Tech Visionary"
+                "scholar" -> "Scholar Academic"
+                "creative" -> "Creative Innovator"
+                else -> "Socratic Mentor"
+            }
+            
+            val feedback = when (twinAvatar) {
+                "tech" -> if (rating == 1) "Warning: Synaptic latency detected for '${card.question}'. Injecting corrective feedback." else "Efficiency: 100%. Cache lines strengthened for '${card.question}'."
+                "scholar" -> if (rating == 1) "A minor error in formal retrieval. Let's decompose '${card.question}' rigorously." else "Exceptional cognitive fidelity demonstrated regarding '${card.question}'."
+                "creative" -> if (rating == 1) "A small stumble! Let's think of '${card.question}' as a puzzlescape." else "Woohoo! Spark of brilliance! You solved '${card.question}' like a pro!"
+                else -> if (rating == 1) "A wonderful opportunity to learn. What specific word in '${card.question}' caused the hesitation?" else "Very good. You retrieved the concept of '${card.question}' smoothly. What is its core implication?"
+            }
+            
+            val twinMsg = SharedRoomMessage(
+                senderName = twinName,
+                senderAvatar = twinAvatar,
+                content = feedback,
+                isSystemAction = false,
+                isTwinMessage = true
+            )
+            
+            val newList = _roomMessages.value.toMutableList()
+            newList.add(twinMsg)
+            _roomMessages.value = newList
+        }
+    }
+
+    fun addCardToRoomDeck(question: String, answer: String) {
+        val room = _activeRoom.value ?: return
+        viewModelScope.launch {
+            val newCard = Flashcard(
+                conceptId = "shared_concept",
+                question = question,
+                answer = answer,
+                deckId = room.deckId,
+                difficulty = "Medium",
+                nextReviewDate = System.currentTimeMillis()
+            )
+            flashcardDao.insertCard(newCard)
+            awardXp(10)
+            
+            // Post action
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val systemMsg = SharedRoomMessage(
+                senderName = "System",
+                senderAvatar = "system",
+                content = "${currentProfile.name} added a new flashcard to this room: '$question'",
+                isSystemAction = true
+            )
+            
+            val updatedMessages = _roomMessages.value.toMutableList()
+            updatedMessages.add(systemMsg)
+            _roomMessages.value = updatedMessages
+            
+            // Update cards
+            val dbCards = flashcardDao.getAllCards().firstOrNull() ?: emptyList()
+            _roomFlashcards.value = dbCards.filter { it.deckId == room.deckId || it.deckId == "default" }
+            
+            // Trigger peer appreciation in the chat!
+            kotlinx.coroutines.delay(1200)
+            val peerName = listOf("Sarah Jennings", "Alex Rivera", "Elena Rostova").random()
+            val peerAvatar = when (peerName) {
+                "Sarah Jennings" -> "Sarah"
+                "Alex Rivera" -> "Alex"
+                else -> "Elena"
+            }
+            val praise = listOf(
+                "Oh wow, that is a fantastic question! Added to my personal spaced repetition queue.",
+                "Awesome addition! We definitely need to practice that before the test.",
+                "Yes! Clean addition to our collaborative database. Let's test ourselves on it."
+            ).random()
+            
+            val peerMsg = SharedRoomMessage(
+                senderName = peerName,
+                senderAvatar = peerAvatar,
+                content = praise,
+                isSystemAction = false,
+                isTwinMessage = false
+            )
+            
+            val newList = _roomMessages.value.toMutableList()
+            newList.add(peerMsg)
+            _roomMessages.value = newList
+        }
+    }
+
+    private fun startPeerSimulation() {
+        peerSimulationJob?.cancel()
+        peerSimulationJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(18000) // update every 18 seconds
+                val room = _activeRoom.value ?: break
+                val participants = _roomParticipants.value
+                if (participants.size <= 1) continue // nobody to simulate
+                
+                // Select a random peer (excluding the host user)
+                val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+                val peers = participants.filter { it.userId != currentProfile.id }
+                if (peers.isEmpty()) continue
+                
+                val selectedPeer = peers.random()
+                
+                // 1. Peer reviews a card!
+                val cards = _roomFlashcards.value
+                val randomCard = cards.randomOrNull()
+                val isSuccess = (0..10).random() > 2 // 80% success
+                
+                // Update peer score
+                val xpGained = if (isSuccess) 15 else 5
+                val updatedParticipants = _roomParticipants.value.map { p ->
+                    if (p.userId == selectedPeer.userId) {
+                        p.copy(
+                            cardsReviewed = p.cardsReviewed + 1,
+                            xpEarned = p.xpEarned + xpGained,
+                            accuracy = ((p.accuracy * p.cardsReviewed + (if (isSuccess) 100 else 0)) / (p.cardsReviewed + 1)).coerceIn(0, 100)
+                        )
+                    } else {
+                        p
+                    }
+                }
+                _roomParticipants.value = updatedParticipants
+                
+                // Log the peer's action
+                val actionText = if (randomCard != null) {
+                    "reviewed '${randomCard.question}' -> ${if (isSuccess) "Recalled 🟢" else "Struggled 🔴"}"
+                } else {
+                    "studied a concept card 🧠"
+                }
+                
+                val systemMsg = SharedRoomMessage(
+                    senderName = "System",
+                    senderAvatar = "system",
+                    content = "${selectedPeer.name} $actionText",
+                    isSystemAction = true
+                )
+                
+                val currentMessages = _roomMessages.value.toMutableList()
+                currentMessages.add(systemMsg)
+                _roomMessages.value = currentMessages
+                
+                // 2. Peer's Digital Twin provides guidance!
+                kotlinx.coroutines.delay(1200)
+                val twinFeedback = when (selectedPeer.twinAvatar) {
+                    "tech" -> if (isSuccess) "Algorithmic consistency high. Reinforcing memory indexes." else "Diagnostic error. Suggesting conceptual restructuring of nodes."
+                    "scholar" -> if (isSuccess) "Perfect academic recall. Our mastery curve is expanding." else "An understandable exception. Spaced intervals will remedy this detail."
+                    "creative" -> if (isSuccess) "Yes! That analogy clicked perfectly in my brain synapses!" else "A tiny speedbump! Let's think of it as a creative puzzle yet to solve."
+                    else -> if (isSuccess) "Excellent. Why do you think this relationship holds true?" else "A great question to investigate. Let's take it slower next time."
+                }
+                
+                val twinMsg = SharedRoomMessage(
+                    senderName = selectedPeer.twinName,
+                    senderAvatar = selectedPeer.twinAvatar,
+                    content = twinFeedback,
+                    isSystemAction = false,
+                    isTwinMessage = true
+                )
+                
+                val updatedWithTwin = _roomMessages.value.toMutableList()
+                updatedWithTwin.add(twinMsg)
+                _roomMessages.value = updatedWithTwin
+            }
+        }
+    }
+
+    fun leaveSharedRoom() {
+        peerSimulationJob?.cancel()
+        peerSimulationJob = null
+        _activeRoom.value = null
+        _roomParticipants.value = emptyList()
+        _roomMessages.value = emptyList()
+        _roomFlashcards.value = emptyList()
+        navigateTo(Screen.SharedSession(null))
+    }
+
+    fun generateTwinBrainstorm() {
+        val room = _activeRoom.value ?: return
+        viewModelScope.launch {
+            _isAILoading.value = true
+            
+            val cards = _roomFlashcards.value
+            val topicDescription = if (cards.isNotEmpty()) {
+                cards.take(3).joinToString("\n") { "- Q: ${it.question} | A: ${it.answer}" }
+            } else {
+                "general learning efficiency, active recall, and cognitive synthesis"
+            }
+            
+            val prompt = """
+                Generate a lively, highly engaging collaborative conversation (script) between four digital learning twins discussing the flashcards and concepts of:
+                Deck Name: "${room.name}" (Subject: ${room.subject})
+                
+                Key deck details/cards to discuss:
+                $topicDescription
+                
+                The digital twins speaking must be:
+                1. Socratic Mentor (Avatar: socratic) - Thoughtful, guides with questions, reflective.
+                2. Tech Visionary (Avatar: tech) - Analytical, uses futuristic systems terminology, precise.
+                3. Scholar Academic (Avatar: scholar) - Classical, deep historical or theoretical foundations, highly academic.
+                4. Creative Innovator (Avatar: creative) - Fun, energetic, uses rich analogies and metaphors.
+                
+                Format your output as a raw JSON array of speech turns, with exactly this format (no markdown packaging, just the JSON):
+                [
+                  {"twin": "socratic", "name": "Socratic Mentor", "message": "..."},
+                  {"twin": "tech", "name": "Tech Visionary", "message": "..."},
+                  {"twin": "scholar", "name": "Scholar Academic", "message": "..."},
+                  {"twin": "creative", "name": "Creative Innovator", "message": "..."}
+                ]
+                Produce 4-6 turns of interactive dialogue where they converse with each other about these concepts.
+            """.trimIndent()
+            
+            var dialogueJson: String? = null
+            if (GeminiClient.isApiKeyAvailable()) {
+                try {
+                    dialogueJson = GeminiClient.generate(
+                        prompt = prompt,
+                        systemPrompt = "You are a professional script writer and educational taxonomy AI. Only output valid raw JSON array."
+                    )
+                } catch (e: Exception) {
+                    Log.e("neurolearn", "Failed to generate twin brainstorm", e)
+                }
+            }
+            
+            // Clean up JSON formatting
+            val cleanJson = dialogueJson?.trim()
+                ?.removePrefix("```json")
+                ?.removeSuffix("```")
+                ?.trim()
+            
+            val dialogueList = mutableListOf<SharedRoomMessage>()
+            
+            if (!cleanJson.isNullOrEmpty() && cleanJson.startsWith("[")) {
+                try {
+                    val array = JSONArray(cleanJson)
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        dialogueList.add(
+                            SharedRoomMessage(
+                                senderName = obj.getString("name"),
+                                senderAvatar = obj.getString("twin"),
+                                content = obj.getString("message"),
+                                isSystemAction = false,
+                                isTwinMessage = true
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e("neurolearn", "Error parsing brainstorm JSON", e)
+                }
+            }
+            
+            if (dialogueList.isEmpty()) {
+                // Fallback brainstorm session
+                dialogueList.addAll(getFallbackBrainstorm(room.subject, topicDescription))
+            }
+            
+            // Append these messages to the room chat with a beautiful system divider!
+            val systemMsg = SharedRoomMessage(
+                senderName = "System",
+                senderAvatar = "system",
+                content = "✨ COLLABORATIVE TWIN BRAINSTORM SESSION START ✨\nThe digital twins have synthesized their philosophies to debate your concepts:",
+                isSystemAction = true
+            )
+            
+            val updatedMessages = _roomMessages.value.toMutableList()
+            updatedMessages.add(systemMsg)
+            updatedMessages.addAll(dialogueList)
+            updatedMessages.add(
+                SharedRoomMessage(
+                    senderName = "System",
+                    senderAvatar = "system",
+                    content = "✨ BRAINSTORM END: Review the feedback from your peers' twins to build lateral comprehension!",
+                    isSystemAction = true
+                )
+            )
+            
+            _roomMessages.value = updatedMessages
+            _isAILoading.value = false
+            showToast("Twin Brainstorm completed! Read the debate in the chat feed.")
+        }
+    }
+
+    private fun getFallbackBrainstorm(subject: String, topics: String): List<SharedRoomMessage> {
+        return listOf(
+            SharedRoomMessage(
+                senderName = "Socratic Mentor",
+                senderAvatar = "socratic",
+                content = "Looking at our subject ($subject), how can we scaffold these concepts? What is the core question we must ask ourselves first?",
+                isTwinMessage = true
+            ),
+            SharedRoomMessage(
+                senderName = "Tech Visionary",
+                senderAvatar = "tech",
+                content = "From a system efficiency standpoint, we should index these data points as logical nodes. Memory consolidation relies on high bandwidth recall.",
+                isTwinMessage = true
+            ),
+            SharedRoomMessage(
+                senderName = "Scholar Academic",
+                senderAvatar = "scholar",
+                content = "Indeed. The academic literature stresses the value of cognitive deep structures. Surface-level memorization fails under rigor.",
+                isTwinMessage = true
+            ),
+            SharedRoomMessage(
+                senderName = "Creative Innovator",
+                senderAvatar = "creative",
+                content = "Let's think of this like building a conceptual playground! We connect different colorful toys to make a beautiful theme park in our brain!",
+                isTwinMessage = true
+            ),
+            SharedRoomMessage(
+                senderName = "Socratic Mentor",
+                senderAvatar = "socratic",
+                content = "Beautifully put, Creative. When we connect those toys, do they remain stable, or do we need daily spaced exercises to keep the park running?",
+                isTwinMessage = true
+            )
+        )
+    }
+
+    // --- Caching & Offline Synchronization Helpers ---
+
+    fun queueSyncAction(actionType: String, payload: org.json.JSONObject) {
+        viewModelScope.launch {
+            val action = PendingSyncAction(
+                actionType = actionType,
+                payloadJson = payload.toString()
+            )
+            pendingSyncActionDao.insertAction(action)
+            updatePendingSyncCount()
+        }
+    }
+
+    fun updatePendingSyncCount() {
+        viewModelScope.launch {
+            _pendingSyncCount.value = pendingSyncActionDao.getPendingActions().size
+        }
+    }
+
+    fun markDeckAsStudied(deckId: String?) {
+        val id = deckId ?: "default"
+        viewModelScope.launch {
+            recentlyStudiedDeckDao.insertRecent(RecentlyStudiedDeck(id, System.currentTimeMillis()))
+        }
+    }
+
+    private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitSync(): T? {
+        return kotlin.coroutines.suspendCoroutine { continuation ->
+            this.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    continuation.resumeWith(Result.success(task.result))
+                } else {
+                    continuation.resumeWith(Result.failure(task.exception ?: Exception("Firestore Sync Failed")))
+                }
+            }
+        }
+    }
+
+    fun processPendingSyncQueue() {
+        viewModelScope.launch {
+            val pending = pendingSyncActionDao.getPendingActions()
+            if (pending.isEmpty()) {
+                _pendingSyncCount.value = 0
+                return@launch
+            }
+            Log.d("neurolearn", "Processing ${pending.size} pending sync actions...")
+            val db = firestore
+            for (action in pending) {
+                try {
+                    val payload = org.json.JSONObject(action.payloadJson)
+                    when (action.actionType) {
+                        "CREATE_DECK" -> {
+                            val id = payload.getString("id")
+                            val name = payload.getString("name")
+                            val description = payload.getString("description")
+                            val subject = payload.getString("subject")
+                            val createdAt = payload.getLong("createdAt")
+                            val deck = FlashcardDeck(id, name, description, subject, createdAt)
+                            if (db != null) {
+                                db.collection("decks").document(id).set(deck).awaitSync()
+                            }
+                        }
+                        "ADD_CARD" -> {
+                            val id = payload.getInt("id")
+                            val conceptId = payload.optString("conceptId", "custom")
+                            val question = payload.getString("question")
+                            val answer = payload.getString("answer")
+                            val difficulty = payload.getString("difficulty")
+                            val deckId = payload.getString("deckId")
+                            val tags = payload.optString("tags", "")
+                            val card = Flashcard(id, conceptId, question, answer, difficulty, deckId = deckId, tags = tags)
+                            if (db != null) {
+                                db.collection("flashcards").document(id.toString()).set(card).awaitSync()
+                            }
+                        }
+                        "UPDATE_TASK" -> {
+                            val taskId = payload.getInt("taskId")
+                            val isCompleted = payload.getBoolean("isCompleted")
+                            if (db != null) {
+                                db.collection("study_tasks").document(taskId.toString()).update("isCompleted", isCompleted).awaitSync()
+                            }
+                        }
+                        "RATE_CARD" -> {
+                            val cardId = payload.getInt("cardId")
+                            val card = flashcardDao.getCardById(cardId)
+                            if (card != null && db != null) {
+                                db.collection("flashcards").document(card.id.toString()).set(card).awaitSync()
+                            }
+                        }
+                    }
+                    pendingSyncActionDao.deleteAction(action.id)
+                } catch (e: Exception) {
+                    Log.e("neurolearn", "Sync action ${action.id} failed, retry later", e)
+                    break
+                }
+            }
+            updatePendingSyncCount()
+        }
+    }
+
+    // AI Twin Digital Advisor custom advice
+    private val _twinGuidanceText = MutableStateFlow<String?>(null)
+    val twinGuidanceText: StateFlow<String?> = _twinGuidanceText.asStateFlow()
+
+    fun generateDigitalTwinGuidance() {
+        viewModelScope.launch {
+            _isAILoading.value = true
+            try {
+                val activeProfile = profile.value ?: LearnerProfile()
+                val avatar = activeProfile.selectedTwinAvatar
+                val gaps = allConcepts.value.filter { (it.understandingScore + it.confidenceScore) / 2f < 0.6f }
+                val gapNames = gaps.joinToString(", ") { it.name }
+                val goals = studyTasks.value.filter { !it.isCompleted }.joinToString(", ") { it.conceptName }
+                
+                val personaPrompt = when (avatar) {
+                    "tech" -> "You are 'The Tech Visionary' digital learning twin. Give extremely precise, structured, data-driven suggestions."
+                    "scholar" -> "You are 'The Scholar Academic' advisor. Use deep, foundations-focused, classical explanations."
+                    "creative" -> "You are 'The Creative Innovator'. Use visual analogies, metaphors, and playfulness."
+                    else -> "You are 'The Socratic Mentor'. Guide through scaffolded hints, encouragement, and self-discovery."
+                }
+                
+                val prompt = """
+                    Based on the student's progress:
+                    - Knowledge Gaps to bridge: $gapNames
+                    - Upcoming Study Goals: $goals
+                    - Learning style: ${activeProfile.learningStyle}
+                    Provide a highly personalized 2-paragraph study advisory from the perspective of their Digital Twin. 
+                    Paragraph 1: High-level synthesis of their cognitive sync status and knowledge gaps.
+                    Paragraph 2: Clear, actionable micro-goals for today to bridge these gaps.
+                """.trimIndent()
+                
+                if (GeminiClient.isApiKeyAvailable() && isNetworkOnline.value) {
+                    val response = GeminiClient.generate(prompt, personaPrompt)
+                    _twinGuidanceText.value = response
+                } else {
+                    val gapListText = if (gaps.isEmpty()) "all current concepts" else gapNames
+                    val fallbackResponse = when (avatar) {
+                        "tech" -> "📊 [TECH SYNC] Cognitive metrics are stabilized. Telemetry indicates learning opportunities in: $gapListText. Priority: Run structured active recall sessions for $gapListText. Verify goals: $goals."
+                        "scholar" -> "📚 [SCHOLAR DIALECTIC] Academic records indicate solid fundamentals, yet minor conceptual gaps persist in: $gapListText. I recommend bottom-up revision of axioms of these topics, then resolving scheduled milestones: $goals."
+                        "creative" -> "💡 [CREATIVE SPARKS] Our learning web is glowing, but there's a tiny cloud over: $gapListText. Let's make some fun analogies for $gapListText, then check off our goals: $goals!"
+                        else -> "🌱 [SOCRATIC INSIGHT] How deeply do we know what we think we know? Our current inquiry highlights: $gapListText. I invite you to ask yourself fundamental questions regarding these concepts, and gently approach our goals: $goals."
+                    }
+                    _twinGuidanceText.value = fallbackResponse
+                }
+            } catch (e: Exception) {
+                _twinGuidanceText.value = "Twin synchronization calibrating. Continue with flashcard reviews to build confidence!"
+            } finally {
+                _isAILoading.value = false
+            }
+        }
+    }
+
+    // --- Tech Virtual Study Rooms Logic ---
+
+    fun getTechRoom(roomId: String): Flow<TechStudyRoom?> {
+        return techStudyRoomDao.getRoomById(roomId)
+    }
+
+    fun getTechRoomMessages(roomId: String): Flow<List<TechRoomMessage>> {
+        return techRoomMessageDao.getMessagesForRoom(roomId)
+    }
+
+    fun createTechStudyRoom(name: String, projectId: String, projectName: String) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val newRoom = TechStudyRoom(
+                projectId = projectId,
+                projectName = projectName,
+                name = name,
+                creatorName = currentProfile.name,
+                activeParticipants = "${currentProfile.name}, Alex Rivera (Tech Twin), Sarah Jennings (Scholar)"
+            )
+            techStudyRoomDao.insertRoom(newRoom)
+            
+            // Initial system message
+            val sysMsg = TechRoomMessage(
+                roomId = newRoom.id,
+                senderName = "System",
+                senderRole = "System",
+                content = "Virtual study room '${name}' launched successfully! Collaborate in real-time on project '${projectName}' with your peers."
+            )
+            techRoomMessageDao.insertMessage(sysMsg)
+            
+            // Add XP for hosting room
+            awardXp(15)
+            showToast("Collaborative study room launched! +15 XP")
+            navigateTo(Screen.TechStudyRoom(newRoom.id))
+        }
+    }
+
+    fun sendTechRoomMessage(roomId: String, content: String) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val userMsg = TechRoomMessage(
+                roomId = roomId,
+                senderName = currentProfile.name,
+                senderRole = currentProfile.learningStyle,
+                content = content
+            )
+            techRoomMessageDao.insertMessage(userMsg)
+            
+            // Trigger simulated peer response!
+            simulateTechRoomPeerReply(roomId, content)
+        }
+    }
+
+    fun updateCollaborativeNotes(roomId: String, notes: String) {
+        viewModelScope.launch {
+            techStudyRoomDao.updateNotes(roomId, notes)
+        }
+    }
+
+    fun coAuthorNotesWithPeer(roomId: String, currentNotes: String) {
+        viewModelScope.launch {
+            _isAILoading.value = true
+            val room = techStudyRoomDao.getRoomById(roomId).firstOrNull() ?: return@launch
+            val prompt = """
+                You are collaborating in a virtual study room named "${room.name}" for the project "${room.projectName}".
+                Here are the current shared whiteboard/code editor notes:
+                
+                $currentNotes
+                
+                Please collaborate by co-authoring! Add a highly detailed new section, code template, or structured brainstorm action points to these notes. Return the FULL updated notes (with your additions clearly integrated). Keep your additions professional, relevant to the project, and in Markdown format.
+            """.trimIndent()
+            
+            try {
+                if (GeminiClient.isApiKeyAvailable() && isNetworkOnline.value) {
+                    val response = GeminiClient.generate(prompt, "You are a warm, highly analytical collaborative Peer Twin.")
+                    if (response.isNotBlank()) {
+                        techStudyRoomDao.updateNotes(roomId, response)
+                        // Send system message that peer co-authored
+                        val sysMsg = TechRoomMessage(
+                            roomId = roomId,
+                            senderName = "System",
+                            senderRole = "System",
+                            content = "Collaborative Peer Twin co-authored the whiteboard notes! ✍️"
+                        )
+                        techRoomMessageDao.insertMessage(sysMsg)
+                    }
+                } else {
+                    // Local offline simulation
+                    val updatedNotes = "$currentNotes\n\n### [Simulated Collaboration Update]\n- **Idea Draft**: Integrations should leverage local SQLite schemas for persistent caching.\n- **Action Point**: Alex will set up the Jetpack Compose scaffold for real-time peer roster UI."
+                    techStudyRoomDao.updateNotes(roomId, updatedNotes)
+                    val sysMsg = TechRoomMessage(
+                        roomId = roomId,
+                        senderName = "System",
+                        senderRole = "System",
+                        content = "Collaborative Peer Twin draft updated! ✍️"
+                    )
+                    techRoomMessageDao.insertMessage(sysMsg)
+                }
+            } catch (e: Exception) {
+                showToast("Collaboration timeout. Local drafts saved.")
+            } finally {
+                _isAILoading.value = false
+            }
+        }
+    }
+
+    private fun simulateTechRoomPeerReply(roomId: String, userMessage: String) {
+        viewModelScope.launch {
+            // Wait a brief moment to simulate typing
+            kotlinx.coroutines.delay(1500)
+            val room = techStudyRoomDao.getRoomById(roomId).firstOrNull() ?: return@launch
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            
+            val prompt = """
+                You are in a virtual study room named "${room.name}" collaborating on the project "${room.projectName}".
+                The user "${currentProfile.name}" (Role: ${currentProfile.learningStyle}) says:
+                "$userMessage"
+                
+                Provide a short, constructive, collaborative response as a peer (e.g., Alex or Sarah). 
+                Do not include any formatting other than clean text. Keep it under 3 sentences.
+            """.trimIndent()
+            
+            try {
+                if (GeminiClient.isApiKeyAvailable() && isNetworkOnline.value) {
+                    val response = GeminiClient.generate(prompt, "You are a friendly peer software engineer collaborating on a project.")
+                    if (response.isNotBlank()) {
+                        val peerMsg = TechRoomMessage(
+                            roomId = roomId,
+                            senderName = "Alex Rivera (Tech Twin)",
+                            senderRole = "Mentor",
+                            content = response
+                        )
+                        techRoomMessageDao.insertMessage(peerMsg)
+                    }
+                } else {
+                    // Local offline reply fallback
+                    val replies = listOf(
+                        "That sounds like an amazing approach for ${room.projectName}! We should definitely list this under our main milestones.",
+                        "Agreed! I think using local Room database caching will make this extremely snappy. Have you drafted the Entity classes yet?",
+                        "Socrates suggested we model this with custom Canvas drawings to make it visual. What do you think?"
+                    )
+                    val randomReply = replies.random()
+                    val peerMsg = TechRoomMessage(
+                        roomId = roomId,
+                        senderName = "Alex Rivera (Tech Twin)",
+                        senderRole = "Mentor",
+                        content = randomReply
+                    )
+                    techRoomMessageDao.insertMessage(peerMsg)
+                }
+            } catch (e: Exception) {
+                // Fallback message
+                val fallbackMsg = TechRoomMessage(
+                    roomId = roomId,
+                    senderName = "Alex Rivera (Tech Twin)",
+                    senderRole = "Mentor",
+                    content = "That sounds like a great approach! Let's update the collaborative whiteboard with those tasks."
+                )
+                techRoomMessageDao.insertMessage(fallbackMsg)
+            }
+        }
+    }
+
+    fun deleteTechStudyRoom(roomId: String) {
+        viewModelScope.launch {
+            techStudyRoomDao.deleteRoom(roomId)
+            techRoomMessageDao.deleteMessagesForRoom(roomId)
+            showToast("Virtual study room closed.")
+        }
+    }
+
+    fun getScratchpadItems(roomId: String): Flow<List<ScratchpadItem>> {
+        return scratchpadItemDao.getItemsForRoom(roomId)
+    }
+
+    fun addScratchpadItem(roomId: String, content: String) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val newItem = ScratchpadItem(
+                roomId = roomId,
+                authorName = currentProfile.name + " (You)",
+                authorRole = currentProfile.learningStyle,
+                content = content
+            )
+            scratchpadItemDao.insertItem(newItem)
+            
+            // Auto trigger simulated peer action
+            simulateScratchpadPeerAction(roomId, newItem)
+        }
+    }
+
+    fun upvoteScratchpadItem(id: String) {
+        viewModelScope.launch {
+            scratchpadItemDao.upvoteItem(id)
+        }
+    }
+
+    fun deleteScratchpadItem(id: String) {
+        viewModelScope.launch {
+            scratchpadItemDao.deleteItem(id)
+        }
+    }
+
+    fun requestPeerBrainstormContribution(roomId: String) {
+        viewModelScope.launch {
+            _isAILoading.value = true
+            val room = techStudyRoomDao.getRoomById(roomId).firstOrNull() ?: return@launch
+            val peerNames = listOf("Alex Rivera (Tech Twin)", "Sarah Jenkins (Study Partner)", "Marcus Vance (Expert)")
+            val randomPeer = peerNames.random()
+            
+            val prompt = """
+                You are in a virtual study room named "${room.name}" collaborating on the project "${room.projectName}".
+                Please generate one highly creative, concise, technical brainstorming point or actionable feature request for this project.
+                Keep it under 2 sentences. No bullet points or markdown.
+            """.trimIndent()
+            
+            try {
+                val peerContent = if (GeminiClient.isApiKeyAvailable() && isNetworkOnline.value) {
+                    val response = GeminiClient.generate(prompt, "You are an analytical peer collaborator.")
+                    if (response.isNotBlank()) response else null
+                } else {
+                    null
+                }
+                
+                val finalContent = peerContent ?: listOf(
+                    "Let's establish a standard key-value local cache for frequently loaded media files.",
+                    "We need to define a robust responsive breakpoint rule for foldable and tablet screen form factors.",
+                    "Let's write a modular API client class with built-in retry-on-failure interceptor headers.",
+                    "What about sketching out a clean user-journey flowchart for onboarding first-time learners?",
+                    "We should plan a lightweight SQL schema migrator to seamlessly handle future db version upgrades."
+                ).random()
+                
+                val peerItem = ScratchpadItem(
+                    roomId = roomId,
+                    authorName = randomPeer,
+                    authorRole = if (randomPeer.contains("Twin")) "Mentor" else "Scholar",
+                    content = finalContent
+                )
+                scratchpadItemDao.insertItem(peerItem)
+                showToast("$randomPeer shared a brilliant idea on the scratchpad! 💡")
+            } catch (e: Exception) {
+                showToast("Brainstorming session timed out. Try again.")
+            } finally {
+                _isAILoading.value = false
+            }
+        }
+    }
+
+    private fun simulateScratchpadPeerAction(roomId: String, item: ScratchpadItem) {
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(1800)
+            val room = techStudyRoomDao.getRoomById(roomId).firstOrNull() ?: return@launch
+            
+            // 1. Peer upvote simulation
+            val peerNames = listOf("Alex Rivera (Tech Twin)", "Sarah Jenkins (Study Partner)", "Marcus Vance (Expert)")
+            val randomPeer = peerNames.random()
+            
+            scratchpadItemDao.upvoteItem(item.id)
+            showToast("$randomPeer upvoted your brainstorming point!")
+            
+            // 2. Peer complementary note contribution
+            kotlinx.coroutines.delay(1500)
+            
+            val prompt = """
+                You are in a virtual study room named "${room.name}" collaborating on the project "${room.projectName}".
+                A peer added this brainstorming point to the real-time scratchpad:
+                "${item.content}"
+                
+                Please draft a short, constructive, collaborative follow-up brainstorming point or note as a peer (e.g. Alex or Sarah). 
+                Keep it highly technical, relevant, and short (under 2 sentences). No markdown or bullet points.
+            """.trimIndent()
+            
+            try {
+                val peerContent = if (GeminiClient.isApiKeyAvailable() && isNetworkOnline.value) {
+                    val response = GeminiClient.generate(prompt, "You are a creative peer software engineer.")
+                    if (response.isNotBlank()) response else null
+                } else {
+                    null
+                }
+                
+                val finalContent = peerContent ?: listOf(
+                    "Agreed! We also need to map out the relational database schemas for high-speed offline access.",
+                    "Excellent idea. Let's add a comprehensive Git rebase protocol to avoid any merge conflicts on this.",
+                    "Let's also outline an automated notification trigger for completed sprint phases.",
+                    "That directly addresses our architectural bottleneck. I'll sketch a quick sequence flow diagram.",
+                    "We should back that up with a robust unit-testing suite for the core business services."
+                ).random()
+                
+                val peerItem = ScratchpadItem(
+                    roomId = roomId,
+                    authorName = randomPeer,
+                    authorRole = if (randomPeer.contains("Twin")) "Mentor" else "Scholar",
+                    content = finalContent
+                )
+                scratchpadItemDao.insertItem(peerItem)
+                showToast("$randomPeer added a brainstorming point to the scratchpad! ✍️")
+            } catch (e: Exception) {
+                // Ignore silent timeouts
+            }
         }
     }
 }

@@ -50,6 +50,7 @@ import com.example.data.Flashcard
 import com.example.data.FlashcardDeck
 import com.example.data.StudyTask
 import com.example.ui.MainViewModel
+import com.example.ui.Screen
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.cos
@@ -387,7 +388,12 @@ fun ProgressScreen(viewModel: MainViewModel) {
             
             val subjectMasteries = remember(concepts) {
                 if (concepts.isEmpty()) {
-                    mapOf("Calculus" to 0.5f, "Computer Science" to 0.5f, "Chemistry" to 0.5f)
+                    mapOf(
+                        "Calculus" to 0.5f, "Computer Science" to 0.5f, "Chemistry" to 0.5f,
+                        "Product Management" to 0.5f, "Software Development" to 0.5f, "Web3 & Blockchain" to 0.5f,
+                        "E-commerce" to 0.5f, "Business Analysis" to 0.5f, "Product Design" to 0.5f,
+                        "Project Management" to 0.5f, "Digital Marketing" to 0.5f, "Data Analysis" to 0.5f
+                    )
                 } else {
                     concepts.groupBy { it.subject }.mapValues { (_, subjectConcepts) ->
                         if (subjectConcepts.isEmpty()) 0.0f else {
@@ -551,6 +557,36 @@ fun ProgressScreen(viewModel: MainViewModel) {
                             modifier = Modifier.weight(1f)
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { viewModel.navigateTo(Screen.StudyPlanner) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("navigate_to_study_planner_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                    ) {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Open Intelligent Study Planner", style = MaterialTheme.typography.labelLarge)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = { viewModel.navigateTo(Screen.DigitalTwinDashboard) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("navigate_to_twin_dashboard_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(imageVector = Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Open Digital Twin Dashboard", style = MaterialTheme.typography.labelLarge)
+                    }
                 }
             }
         }
@@ -647,6 +683,8 @@ fun ProgressScreen(viewModel: MainViewModel) {
                     val currentLevelNum = profile?.level ?: 1
                     val hasCompletedTask = studyTasks.any { it.isCompleted }
                     val masteredCount = allFlashcards.filter { it.repetitions >= 1 }.size
+                    val cardsReviewedCount = profile?.cardsReviewedCount ?: 0
+                    val quizzesCompletedCount = profile?.quizzesCompletedCount ?: 0
 
                     val badgesList = listOf(
                         BadgeData(
@@ -690,6 +728,27 @@ fun ProgressScreen(viewModel: MainViewModel) {
                             icon = Icons.Default.Task,
                             color = Color(0xFF00BCD4),
                             isUnlocked = hasCompletedTask
+                        ),
+                        BadgeData(
+                            title = "Spaced Repetition Disciple",
+                            description = "Review 10+ flashcards",
+                            icon = Icons.Default.MenuBook,
+                            color = Color(0xFF00E676),
+                            isUnlocked = cardsReviewedCount >= 10
+                        ),
+                        BadgeData(
+                            title = "Twin Quiz Pioneer",
+                            description = "Complete 1 Twin Quiz",
+                            icon = Icons.Default.Quiz,
+                            color = Color(0xFF29B6F6),
+                            isUnlocked = quizzesCompletedCount >= 1
+                        ),
+                        BadgeData(
+                            title = "Quiz Champion",
+                            description = "Complete 5+ Twin Quizzes",
+                            icon = Icons.Default.WorkspacePremium,
+                            color = Color(0xFFFFCA28),
+                            isUnlocked = quizzesCompletedCount >= 5
                         )
                     )
 

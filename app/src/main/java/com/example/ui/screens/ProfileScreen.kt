@@ -253,6 +253,8 @@ fun ProfileScreen(viewModel: MainViewModel) {
             val masteredCount = remember(allFlashcards) { allFlashcards.filter { it.repetitions >= 1 }.size }
             val currentStreak = profile?.streak ?: 0
             val currentLevel = profile?.level ?: 1
+            val cardsReviewedCount = profile?.cardsReviewedCount ?: 0
+            val quizzesCompletedCount = profile?.quizzesCompletedCount ?: 0
             
             val profileBadges = listOf(
                 BadgeData(
@@ -296,6 +298,27 @@ fun ProfileScreen(viewModel: MainViewModel) {
                     icon = Icons.Default.MilitaryTech,
                     color = Color(0xFF9C27B0),
                     isUnlocked = currentLevel >= 5
+                ),
+                BadgeData(
+                    title = "Spaced Repetition Disciple",
+                    description = "Review 10+ flashcards",
+                    icon = Icons.Default.MenuBook,
+                    color = Color(0xFF00E676),
+                    isUnlocked = cardsReviewedCount >= 10
+                ),
+                BadgeData(
+                    title = "Twin Quiz Pioneer",
+                    description = "Complete 1 Twin Quiz",
+                    icon = Icons.Default.Quiz,
+                    color = Color(0xFF29B6F6),
+                    isUnlocked = quizzesCompletedCount >= 1
+                ),
+                BadgeData(
+                    title = "Quiz Champion",
+                    description = "Complete 5+ Twin Quizzes",
+                    icon = Icons.Default.WorkspacePremium,
+                    color = Color(0xFFFFCA28),
+                    isUnlocked = quizzesCompletedCount >= 5
                 )
             )
 
@@ -396,6 +419,9 @@ fun ProfileScreen(viewModel: MainViewModel) {
                     "Concept Overlord" -> (masteredCount / 50f).coerceIn(0f, 1f)
                     "Memory Grandmaster" -> (masteredCount / 100f).coerceIn(0f, 1f)
                     "Level Prodigy" -> (currentLevel / 5f).coerceIn(0f, 1f)
+                    "Spaced Repetition Disciple" -> (cardsReviewedCount / 10f).coerceIn(0f, 1f)
+                    "Twin Quiz Pioneer" -> (quizzesCompletedCount / 1f).coerceIn(0f, 1f)
+                    "Quiz Champion" -> (quizzesCompletedCount / 5f).coerceIn(0f, 1f)
                     else -> if (badge.isUnlocked) 1f else 0f
                 }
                 
@@ -406,6 +432,9 @@ fun ProfileScreen(viewModel: MainViewModel) {
                     "Concept Overlord" -> "${masteredCount.coerceAtMost(50)} / 50 Cards Mastered"
                     "Memory Grandmaster" -> "${masteredCount.coerceAtMost(100)} / 100 Cards Mastered"
                     "Level Prodigy" -> "Level $currentLevel / 5"
+                    "Spaced Repetition Disciple" -> "${cardsReviewedCount.coerceAtMost(10)} / 10 Cards Reviewed"
+                    "Twin Quiz Pioneer" -> "${quizzesCompletedCount.coerceAtMost(1)} / 1 Twin Quizzes Completed"
+                    "Quiz Champion" -> "${quizzesCompletedCount.coerceAtMost(5)} / 5 Twin Quizzes Completed"
                     else -> if (badge.isUnlocked) "Completed" else "Locked"
                 }
 
@@ -416,6 +445,9 @@ fun ProfileScreen(viewModel: MainViewModel) {
                     "Concept Overlord" -> "Fabulous dedication! Mastering 50 concepts demonstrates superb academic discipline and recall strength."
                     "Memory Grandmaster" -> "Phenomenal achievement! You have mastered 100 concepts, indicating an elite level of dynamic retention."
                     "Level Prodigy" -> "Your intelligence index is scaling up rapidly. Level 5 proves you are a top-tier cognitive scholar!"
+                    "Spaced Repetition Disciple" -> "Excellent work reviewing cards. Each review strengthens your neurological recall precision!"
+                    "Twin Quiz Pioneer" -> "Splendid! You have successfully completed your first digital twin personalized evaluation!"
+                    "Quiz Champion" -> "A master of twin-designed assessments! Complete 5 quizzes to secure your ultimate retention credentials!"
                     else -> "Every milestone unlocked strengthens your learning index. Keep studying and mastering concepts!"
                 }
 
@@ -602,6 +634,49 @@ fun ProfileScreen(viewModel: MainViewModel) {
                                     Icon(imageVector = Icons.Default.EmojiEvents, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("100 Cards", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { viewModel.simulateGamification(10, 1) },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("sim_game_lvl1_btn")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Lvl 1 Milestones", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                }
+                            }
+
+                            Button(
+                                onClick = { viewModel.simulateGamification(50, 5) },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("sim_game_lvl2_btn")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(imageVector = Icons.Default.FastForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Lvl 2 Milestones", style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                 }
                             }
                         }

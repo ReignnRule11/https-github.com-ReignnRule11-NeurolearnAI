@@ -25,6 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +36,35 @@ fun PdfIntelligenceScreen(viewModel: MainViewModel, conceptId: String) {
     val isLoading by viewModel.isAILoading.collectAsState()
     val generatedNotes by viewModel.generatedNotes.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+
+    val context = LocalContext.current
+    var isImportingPdf by remember { mutableStateOf(false) }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isImportingPdf = true
+                try {
+                    var fileName = "imported_notes.pdf"
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex != -1 && cursor.moveToFirst()) {
+                            fileName = cursor.getString(nameIndex)
+                        }
+                    }
+                    val extractedText = com.example.api.PdfTextExtractor.extractText(context, uri)
+                    viewModel.processImportedPdf(conceptId, fileName, extractedText)
+                } catch (e: Exception) {
+                    android.util.Log.e("PdfScreen", "Failed to load/parse PDF", e)
+                    viewModel.showToast("Failed to read PDF file.")
+                } finally {
+                    isImportingPdf = false
+                }
+            }
+        }
+    }
 
     val concept = concepts.find { it.id == conceptId }
     val conceptName = concept?.name ?: "Topic"
@@ -84,7 +116,7 @@ fun PdfIntelligenceScreen(viewModel: MainViewModel, conceptId: String) {
                 .background(MaterialTheme.colorScheme.background)
                 .testTag("pdf_screen_container")
         ) {
-            if (isLoading) {
+            if (isLoading || isImportingPdf) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -95,7 +127,7 @@ fun PdfIntelligenceScreen(viewModel: MainViewModel, conceptId: String) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "AI is extracting formulas, summaries, and flashcards...",
+                        text = if (isImportingPdf) "Extracting text and structure from PDF file..." else "AI is extracting formulas, summaries, and flashcards...",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center
@@ -116,10 +148,92 @@ fun PdfIntelligenceScreen(viewModel: MainViewModel, conceptId: String) {
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = "Paste your lecture slides, notes, textbook pages, or try out a sample document below.",
+                            text = "Import a PDF document to synthesize custom flashcard decks, or paste your raw notes text below.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    // PDF Document Import Card
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .testTag("pdf_import_card")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Upload,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Import PDF Lecture Notes",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Text(
+                                            text = "The AI will extract text, equations, and vocabulary to build a custom study deck.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Button(
+                                    onClick = { filePickerLauncher.launch("application/pdf") },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .testTag("select_pdf_button")
+                                ) {
+                                    Icon(imageVector = Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Select PDF File", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        ) {
+                            HorizontalDivider(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            )
+                            Text(
+                                text = "OR PASTE RAW TEXT",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            )
+                        }
                     }
 
                     // Predefined Samples

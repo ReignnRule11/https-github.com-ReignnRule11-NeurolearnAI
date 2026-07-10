@@ -36,7 +36,12 @@ fun LearnScreen(viewModel: MainViewModel) {
     var quizDifficulty by remember { mutableStateOf("Medium") }
 
     val filteredConcepts = concepts.filter { it.subject == selectedSubject }
-    val subjects = listOf("Calculus", "Computer Science", "Chemistry")
+    val subjects = listOf(
+        "Calculus", "Computer Science", "Chemistry",
+        "Product Management", "Software Development", "Web3 & Blockchain",
+        "E-commerce", "Business Analysis", "Product Design",
+        "Project Management", "Digital Marketing", "Data Analysis"
+    )
 
     Column(
         modifier = Modifier

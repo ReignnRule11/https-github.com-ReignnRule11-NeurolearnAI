@@ -6,6 +6,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.*
@@ -207,7 +209,7 @@ fun HomeScreen(viewModel: MainViewModel) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showTwinSelectorHome = true }
+                    .clickable { viewModel.navigateTo(Screen.DigitalTwinDashboard) }
                     .testTag("home_digital_twin_card"),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
@@ -244,18 +246,23 @@ fun HomeScreen(viewModel: MainViewModel) {
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Tap to customize learning philosophy",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                            text = "Tap to open Twin Dashboard",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
 
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = "Customize Twin",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    IconButton(
+                        onClick = { showTwinSelectorHome = true },
+                        modifier = Modifier.testTag("home_customize_twin_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Customize Twin",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
 
@@ -268,6 +275,102 @@ fun HomeScreen(viewModel: MainViewModel) {
                         showTwinSelectorHome = false
                     }
                 )
+            }
+        }
+
+        // Innovative Tech Hub Collaboration Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.navigateTo(Screen.TechHub) }
+                    .testTag("home_tech_hub_card"),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.25f)
+                ),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Hub,
+                        contentDescription = "Tech Hub Icon",
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(48.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "🚀 Innovative Tech Hub",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = "Connect with Learners, Mentors & Instructors on creative projects!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Explore & collaborate now →",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+
+        // Multilingual LingoLab Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.navigateTo(Screen.LanguageLab) }
+                    .testTag("home_language_lab_card"),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
+                ),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Translate,
+                        contentDescription = "Language Lab Icon",
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(48.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "🗣️ LingoLab Multilingual",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = "Learn Spanish, French, German, Japanese, & Swahili with AI translation and transcription speech practice!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Enter Language Lab →",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
 
@@ -385,9 +488,19 @@ fun HomeScreen(viewModel: MainViewModel) {
                             singleLine = true
                         )
 
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             // Subject Selector Chips
-                            val subjectsList = listOf("Calculus", "Computer Science", "Chemistry")
+                            val subjectsList = listOf(
+                                "Calculus", "Computer Science", "Chemistry",
+                                "Product Management", "Software Development", "Web3 & Blockchain",
+                                "E-commerce", "Business Analysis", "Product Design",
+                                "Project Management", "Digital Marketing", "Data Analysis"
+                            )
                             subjectsList.forEach { sub ->
                                 val isSubSelected = selectedSubject == sub
                                 FilterChip(
@@ -398,7 +511,7 @@ fun HomeScreen(viewModel: MainViewModel) {
                                         if (firstConcept != null) selectedConceptId = firstConcept.id
                                     },
                                     label = { Text(sub) },
-                                    modifier = Modifier.testTag("instructor_subject_chip_$sub")
+                                    modifier = Modifier.testTag("instructor_subject_chip_${sub.replace(" & ", "_").replace(" ", "_")}")
                                 )
                             }
                         }
@@ -1064,6 +1177,71 @@ fun HomeScreen(viewModel: MainViewModel) {
                 }
             }
 
+            // Shared Twin Study Rooms Entry Card
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Groups,
+                                    contentDescription = "Collaboration Rooms",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Twin Collaboration Rooms 🌐",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Collaborate & compare study progress in real-time.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Join shared study spaces with peer digital twins. Synchronize flashcard decks, debate key concepts, and climb the collaborative leaderboards.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { viewModel.navigateTo(Screen.SharedSession(null)) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("explore_shared_sessions_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Explore, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Explore Active Study Rooms")
+                        }
+                    }
+                }
+            }
+
             // Today's Study Planner Header
             item {
                 Text(
@@ -1535,6 +1713,22 @@ fun HomeScreen(viewModel: MainViewModel) {
                 }
             }
 
+            item {
+                Button(
+                    onClick = { viewModel.navigateTo(Screen.StudyPlanner) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .testTag("home_go_to_study_planner_btn"),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open Interactive Daily Study Roadmap 🗺️", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+
             // 1.2. Scheduled Study Calendar Section
             item {
                 Card(
@@ -1890,15 +2084,22 @@ fun HomeScreen(viewModel: MainViewModel) {
 
                     // Filters: Subjects
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("All", "Calculus", "Computer Science", "Chemistry").forEach { subject ->
+                        listOf(
+                            "All", "Calculus", "Computer Science", "Chemistry",
+                            "Product Management", "Software Development", "Web3 & Blockchain",
+                            "E-commerce", "Business Analysis", "Product Design",
+                            "Project Management", "Digital Marketing", "Data Analysis"
+                        ).forEach { subject ->
                             FilterChip(
                                 selected = selectedSubjectFilter == subject,
                                 onClick = { selectedSubjectFilter = subject },
                                 label = { Text(subject) },
-                                modifier = Modifier.testTag("filter_subject_$subject")
+                                modifier = Modifier.testTag("filter_subject_${subject.replace(" & ", "_").replace(" ", "_")}")
                             )
                         }
                     }
@@ -2188,14 +2389,21 @@ fun HomeScreen(viewModel: MainViewModel) {
                         )
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
                         ) {
-                            listOf("Calculus", "Computer Science", "Chemistry").forEach { subject ->
+                            listOf(
+                                "Calculus", "Computer Science", "Chemistry",
+                                "Product Management", "Software Development", "Web3 & Blockchain",
+                                "E-commerce", "Business Analysis", "Product Design",
+                                "Project Management", "Digital Marketing", "Data Analysis"
+                            ).forEach { subject ->
                                 FilterChip(
                                     selected = selectedScheduleSubject == subject,
                                     onClick = { selectedScheduleSubject = subject },
                                     label = { Text(subject) },
-                                    modifier = Modifier.testTag("schedule_subject_chip_$subject")
+                                    modifier = Modifier.testTag("schedule_subject_chip_${subject.replace(" & ", "_").replace(" ", "_")}")
                                 )
                             }
                         }

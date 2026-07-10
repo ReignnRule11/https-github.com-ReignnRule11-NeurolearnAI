@@ -206,9 +206,15 @@ fun NeuroLearnAppShell() {
                     Screen.Review -> ReviewScreen(viewModel = viewModel)
                     Screen.Progress -> ProgressScreen(viewModel = viewModel)
                     Screen.Profile -> ProfileScreen(viewModel = viewModel)
+                    Screen.TechHub -> TechHubScreen(viewModel = viewModel)
+                    Screen.LanguageLab -> LanguageLabScreen(viewModel = viewModel)
                     is Screen.TutorChat -> TutorScreen(viewModel = viewModel, conceptId = screen.conceptId, deckId = screen.deckId)
                     is Screen.PdfIntelligence -> PdfIntelligenceScreen(viewModel = viewModel, conceptId = screen.conceptId ?: "limits")
                     is Screen.QuizGame -> QuizScreen(viewModel = viewModel, conceptId = screen.conceptId, difficulty = screen.difficulty)
+                    is Screen.SharedSession -> SharedSessionScreen(viewModel = viewModel, roomId = screen.roomId)
+                    Screen.DigitalTwinDashboard -> DigitalTwinDashboardScreen(viewModel = viewModel)
+                    Screen.StudyPlanner -> StudyPlannerScreen(viewModel = viewModel)
+                    is Screen.TechStudyRoom -> TechStudyRoomScreen(viewModel = viewModel, roomId = screen.roomId)
                 }
             }
         }

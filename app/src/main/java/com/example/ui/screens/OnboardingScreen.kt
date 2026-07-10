@@ -160,7 +160,7 @@ fun OnboardingSetupScreen(viewModel: MainViewModel) {
     var name by remember { mutableStateOf("") }
     var selectedGoal by remember { mutableStateOf("Ace school exams & earn top scores") }
     var selectedCurriculum by remember { mutableStateOf("AP / Advanced / College Prep") }
-    var selectedSubjects by remember { mutableStateOf("Calculus, Computer Science, Chemistry") }
+    var selectedSubjects by remember { mutableStateOf("Calculus, Computer Science, Chemistry, Product Management, Software Development, Web3 & Blockchain, E-commerce, Business Analysis, Product Design, Project Management, Digital Marketing, Data Analysis") }
     var selectedExam by remember { mutableStateOf("AP Exam / College Board") }
     var availableTime by remember { mutableStateOf(45) }
     var selectedStyle by remember { mutableStateOf("Conceptual & Step-by-Step") }
@@ -277,7 +277,7 @@ fun OnboardingSetupScreen(viewModel: MainViewModel) {
                     value = selectedSubjects,
                     onValueChange = { selectedSubjects = it },
                     label = { Text("Study Tracks (Comma-separated)") },
-                    placeholder = { Text("Calculus, Computer Science, Chemistry") },
+                    placeholder = { Text("e.g. Software Development, Product Management, Data Analysis") },
                     leadingIcon = { Icon(imageVector = Icons.Default.MenuBook, contentDescription = "Subjects") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
