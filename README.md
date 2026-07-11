@@ -96,7 +96,7 @@ NeuroLearn AI introduces an innovative regionalized module aligning **Accredited
 
 NeuroLearn AI is architected using **MVVM** and modern **Room Database** local storage.
 
-### Core Data Models (Latest Version: 15)
+### Core Data Models (Latest Version: 16)
 ```kotlin
 @Entity(tableName = "learner_profiles")
 data class LearnerProfile(
@@ -195,7 +195,35 @@ data class PartnershipApplication(
     val status: String = "Pending Review",
     val timestamp: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "project_tasks")
+data class ProjectTask(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val projectId: String,
+    val title: String,
+    val description: String,
+    val assignedTo: String,
+    val isCompleted: Boolean = false,
+    val dueDate: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
 ```
+
+---
+
+## 📋 Collaborative Project Board & Mentor Milestone Integration
+
+NeuroLearn AI integrates a comprehensive, real-time **Collaborative Project Management Board** allowing team members and mentors to track project roadmaps seamlessly.
+
+### 🧠 How It Works
+1. **Interactive Milestones**: Users can select from their active technology proposals or joined team projects.
+2. **Team & Status Tracking**: Shows the project's real-time **Roster** of collaborators alongside a visual Material 3 **Completion Progress Bar** derived dynamically from task checkboxes.
+3. **Seamless Mentor Integration**: 
+   - If an expert mentor has been matched to the selected project under the **Mentor Match** tab, the board automatically fetches the match details (Mentor Name, Alignment, Analysis).
+   - A single-click **"Import Milestones"** action parses the mentor's customized learning path (generated via Gemini AI or local intelligence) and populates them instantly as interactive tasks assigned directly to the mentor or student!
+4. **Task Customization**:
+   - Create custom collaborative tasks specifying Task Title, Description, Assigned Team Member, and Target Due Date.
+   - Live status toggles reward progress with **+15 XP** upon completion of collaborative objectives.
 
 ---
 
@@ -230,6 +258,15 @@ Every critical component includes `Modifier.testTag` declarations for effortless
 | **Submit Proposal Pitch** | `apply_partner_btn_<id>` | Action button to open proposal strategic builder. |
 | **Proposal Strategic Form** | `apply_partnership_form` | Interactive form to enter pitch details. |
 | **Submit Sandbox Pitch** | `submit_partnership_btn` | Sends the pitch to local SQLite persistence and alerts board. |
+| **Tab: Project Board** | `tech_hub_tab_project_board` | Switches active tab to the Project Board panel. |
+| **Project Selector** | `project_board_selector` | Clickable card that triggers the project selection dropdown. |
+| **Project Board Progress** | `board_progress_card` | Card displaying dynamic project progress metrics. |
+| **Import Milestones** | `import_mentor_milestones_btn` | Action button to parse and import matched mentor milestones as board tasks. |
+| **Create Task Button** | `add_board_task_btn` | Opens the Add Task dialog. |
+| **Submit Board Task** | `submit_board_task_btn` | Creates a new task and registers it under the active project. |
+| **Task Card** | `task_card_<id>` | Container displaying individual task details. |
+| **Task Status Toggle** | `task_checkbox_<id>` | Checkbox that registers task completion and awards XP. |
+| **Delete Task Button** | `delete_task_btn_<id>` | Deletes task from active workspace. |
 
 ---
 

@@ -75,6 +75,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val accreditedExamQuestionDao = database.accreditedExamQuestionDao()
     private val platformPartnerDao = database.platformPartnerDao()
     private val partnershipApplicationDao = database.partnershipApplicationDao()
+    private val projectTaskDao = database.projectTaskDao()
 
     // --- State Flows ---
     
@@ -4121,6 +4122,85 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             partnershipApplicationDao.insertApplication(app)
             showToast("Application submitted to $partnerName! 🚀")
+        }
+    }
+
+    fun getTasksForProject(projectId: String): Flow<List<ProjectTask>> {
+        return projectTaskDao.getTasksForProject(projectId)
+    }
+
+    fun addProjectTask(
+        projectId: String,
+        title: String,
+        description: String,
+        assignedTo: String,
+        dueDate: String
+    ) {
+        viewModelScope.launch {
+            val task = ProjectTask(
+                projectId = projectId,
+                title = title,
+                description = description,
+                assignedTo = assignedTo,
+                dueDate = dueDate
+            )
+            projectTaskDao.insertTask(task)
+            awardXp(10) // Task creation rewards 10 XP!
+            showToast("Task '$title' added! +10 XP 📋")
+        }
+    }
+
+    fun updateProjectTaskStatus(taskId: String, isCompleted: Boolean) {
+        viewModelScope.launch {
+            projectTaskDao.updateTaskStatus(taskId, isCompleted)
+            if (isCompleted) {
+                awardXp(15) // Completing a collaborative project task rewards 15 XP!
+                showToast("Task completed! +15 XP 🎉")
+            } else {
+                showToast("Task marked as incomplete.")
+            }
+        }
+    }
+
+    fun deleteProjectTask(taskId: String) {
+        viewModelScope.launch {
+            projectTaskDao.deleteTask(taskId)
+            showToast("Task deleted.")
+        }
+    }
+
+    fun importMentorMilestonesAsTasks(projectId: String, milestonesText: String, mentorName: String) {
+        viewModelScope.launch {
+            if (milestonesText.isBlank()) {
+                showToast("No milestones available to import.")
+                return@launch
+            }
+            val lines = milestonesText.split("\n")
+            var count = 0
+            lines.forEach { line ->
+                val cleanLine = line
+                    .replace(Regex("^[✅❌\\s*•#-]+"), "") // Clean bullets, emojis, checklists
+                    .replace(Regex("^(Milestone\\s+\\d+:\\s*)", RegexOption.IGNORE_CASE), "") // Clean "Milestone X:" prefix
+                    .trim()
+                if (cleanLine.isNotBlank()) {
+                    val task = ProjectTask(
+                        projectId = projectId,
+                        title = if (cleanLine.length > 50) cleanLine.take(50) + "..." else cleanLine,
+                        description = cleanLine,
+                        assignedTo = mentorName,
+                        dueDate = "Mentor Plan",
+                        isCompleted = false
+                    )
+                    projectTaskDao.insertTask(task)
+                    count++
+                }
+            }
+            if (count > 0) {
+                awardXp(20) // Importing mentor milestones rewards 20 XP!
+                showToast("Imported $count mentor milestones as collaborative tasks! +20 XP 🚀")
+            } else {
+                showToast("No valid milestones parsed.")
+            }
         }
     }
 }

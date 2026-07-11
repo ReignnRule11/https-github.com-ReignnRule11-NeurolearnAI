@@ -246,9 +246,10 @@ interface StudyTaskDao {
         BlockchainCertificate::class,
         AccreditedExamQuestion::class,
         PlatformPartner::class,
-        PartnershipApplication::class
+        PartnershipApplication::class,
+        ProjectTask::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -272,6 +273,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun accreditedExamQuestionDao(): AccreditedExamQuestionDao
     abstract fun platformPartnerDao(): PlatformPartnerDao
     abstract fun partnershipApplicationDao(): PartnershipApplicationDao
+    abstract fun projectTaskDao(): ProjectTaskDao
 
     companion object {
         @Volatile
@@ -1422,6 +1424,36 @@ interface PartnershipApplicationDao {
 
     @Query("DELETE FROM partnership_applications")
     suspend fun clearAllApplications()
+}
+
+@Entity(tableName = "project_tasks")
+data class ProjectTask(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val projectId: String,
+    val title: String,
+    val description: String,
+    val assignedTo: String, // e.g. Name of member or mentor
+    val isCompleted: Boolean = false,
+    val dueDate: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface ProjectTaskDao {
+    @Query("SELECT * FROM project_tasks WHERE projectId = :projectId ORDER BY createdAt ASC")
+    fun getTasksForProject(projectId: String): Flow<List<ProjectTask>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTask(task: ProjectTask)
+
+    @Query("UPDATE project_tasks SET isCompleted = :isCompleted WHERE id = :id")
+    suspend fun updateTaskStatus(id: String, isCompleted: Boolean)
+
+    @Query("DELETE FROM project_tasks WHERE id = :id")
+    suspend fun deleteTask(id: String)
+
+    @Query("DELETE FROM project_tasks WHERE projectId = :projectId")
+    suspend fun deleteTasksForProject(projectId: String)
 }
 
 

@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.ProjectComment
 import com.example.data.TechProject
+import com.example.data.ProjectTask
+import androidx.compose.ui.text.style.TextAlign
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import kotlinx.coroutines.flow.flowOf
@@ -196,6 +198,13 @@ fun TechHubScreen(viewModel: MainViewModel) {
                     text = { Text("Certificates", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
                     icon = { Icon(Icons.Default.Verified, contentDescription = null) },
                     modifier = Modifier.testTag("tech_hub_tab_certificates")
+                )
+                Tab(
+                    selected = activeTab == 5,
+                    onClick = { activeTab = 5 },
+                    text = { Text("Board", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.Assignment, contentDescription = null) },
+                    modifier = Modifier.testTag("tech_hub_tab_project_board")
                 )
             }
 
@@ -474,9 +483,12 @@ fun TechHubScreen(viewModel: MainViewModel) {
             } else if (activeTab == 3) {
                 // --- ACADEMIC REPOSITORY & KNOWLEDGE TRANSFER MARKETPLACE ---
                 AcademicRepositoryView(viewModel = viewModel)
-            } else {
+            } else if (activeTab == 4) {
                 // --- BLOCKCHAIN VERIFIABLE CERTIFICATE LEDGER ---
                 BlockchainCertificatesView(viewModel = viewModel)
+            } else {
+                // --- PROJECT COLLABORATION & PROGRESS MANAGEMENT BOARD ---
+                ProjectManagementBoardView(viewModel = viewModel)
             }
 
             // Host custom study room dialog
@@ -2607,6 +2619,743 @@ fun BlockchainCertificatesView(viewModel: MainViewModel) {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProjectManagementBoardView(viewModel: MainViewModel) {
+    val projects by viewModel.techProjects.collectAsState()
+    var selectedProject by remember { mutableStateOf<TechProject?>(null) }
+    var showAddTaskDialog by remember { mutableStateOf(false) }
+
+    // Synchronize or initialize selectedProject
+    LaunchedEffect(projects) {
+        if (selectedProject == null && projects.isNotEmpty()) {
+            selectedProject = projects.first()
+        }
+    }
+
+    val selectedProj = selectedProject
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (projects.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1.0f)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.FolderSpecial,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "No collaborative projects available yet.",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Go to the 'Projects' tab and propose a new technology initiative to get started!",
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        } else {
+            // Project Selector
+            var expandedDropdown by remember { mutableStateOf(false) }
+
+            Text(
+                text = "COLLABORATIVE PROJECT WORKSPACE",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.2.sp
+                ),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    onClick = { expandedDropdown = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("project_board_selector")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = selectedProj?.title ?: "Select a Project",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = selectedProj?.techStack ?: "No tech stack specified",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Expand list"
+                        )
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = expandedDropdown,
+                    onDismissRequest = { expandedDropdown = false },
+                    modifier = Modifier.fillMaxWidth(0.9f)
+                ) {
+                    projects.forEach { proj ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(proj.title, fontWeight = FontWeight.Bold)
+                                    Text(proj.techStack, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            },
+                            onClick = {
+                                selectedProject = proj
+                                expandedDropdown = false
+                            },
+                            modifier = Modifier.testTag("board_select_item_${proj.id}")
+                        )
+                    }
+                }
+            }
+
+            if (selectedProj != null) {
+                // Fetch tasks and mentor matches
+                val tasksFlow = remember(selectedProj.id) { viewModel.getTasksForProject(selectedProj.id) }
+                val tasks by tasksFlow.collectAsState(initial = emptyList())
+
+                val matchesFlow = remember(selectedProj.id) { viewModel.getMentorMatches(selectedProj.id) }
+                val matches by matchesFlow.collectAsState(initial = emptyList())
+                val activeMentorMatch = matches.firstOrNull()
+
+                // Calculate progress
+                val totalTasks = tasks.size
+                val completedTasks = tasks.count { it.isCompleted }
+                val progressFraction = if (totalTasks > 0) completedTasks.toFloat() / totalTasks.toFloat() else 0f
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1.0f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 100.dp)
+                ) {
+                    // --- 1. OVERALL PROGRESS CARD ---
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("board_progress_card")
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Project Milestones Progress",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = "$completedTasks/$totalTasks Completed",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                LinearProgressIndicator(
+                                    progress = progressFraction,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(10.dp)
+                                        .clip(RoundedCornerShape(5.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (totalTasks == 0) {
+                                            "No active milestones. Match with a mentor or add tasks manually to layout your project blueprint."
+                                        } else if (progressFraction == 1.0f) {
+                                            "Incredible! All milestones completed. Ready for cryptographic ledger verification!"
+                                        } else {
+                                            "Keep going! Track your daily learning activities and complete objectives with your mentor."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // --- 2. TEAM ROSTER ---
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = "👥 Active Project Roster",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Black),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    val membersList = selectedProj.teamMembers.split(",").map { it.trim() }
+                                    membersList.forEach { member ->
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Person,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.secondary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = member,
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // --- 3. MENTOR INTEGRATION BLOCK ---
+                    item {
+                        if (activeMentorMatch != null) {
+                            // Mentor Matched State
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("mentor_integration_panel")
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.WorkspacePremium,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.secondary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "🎓 Matched Mentor: ${activeMentorMatch.mentorName}",
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = "${activeMentorMatch.alignmentScore}% Match",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                                color = MaterialTheme.colorScheme.onSecondary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = activeMentorMatch.analysisText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                    )
+
+                                    if (tasks.isEmpty() && activeMentorMatch.milestonesText.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(14.dp))
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        Text(
+                                            text = "🚀 Suggested Mentor Blueprint Detected",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Sync your project board directly with the mentor's recommended learning milestones.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        Button(
+                                            onClick = {
+                                                viewModel.importMentorMilestonesAsTasks(
+                                                    selectedProj.id,
+                                                    activeMentorMatch.milestonesText,
+                                                    activeMentorMatch.mentorName
+                                                )
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondary
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("import_mentor_milestones_btn")
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CloudDownload,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    "Import Milestones as Project Tasks",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // No Mentor Matched yet
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "🎓 Mentor Integration Status",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = "Unmatched",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Pair this project with an accredited industry expert under the 'Mentor Match' tab to receive customized AI/expert roadmap suggestions!",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // --- 4. COLLABORATIVE TASK LIST ---
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "ACTIVE TASK LIST",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+
+                            Button(
+                                onClick = { showAddTaskDialog = true },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("add_board_task_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("New Task", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    if (tasks.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.Assignment,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        "No tasks mapped to this workspace.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        items(tasks) { task ->
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (task.isCompleted) {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    }
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    color = if (task.isCompleted) {
+                                        Color.Transparent
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    }
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("task_card_${task.id}")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1.0f),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Checkbox(
+                                            checked = task.isCompleted,
+                                            onCheckedChange = { isChecked ->
+                                                viewModel.updateProjectTaskStatus(task.id, isChecked)
+                                            },
+                                            modifier = Modifier.testTag("task_checkbox_${task.id}")
+                                        )
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Column {
+                                            Text(
+                                                text = task.title,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    textDecoration = if (task.isCompleted) {
+                                                        androidx.compose.ui.text.style.TextDecoration.LineThrough
+                                                    } else {
+                                                        null
+                                                    }
+                                                ),
+                                                color = if (task.isCompleted) {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                }
+                                            )
+
+                                            Spacer(modifier = Modifier.height(4.dp))
+
+                                            Text(
+                                                text = task.description,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Assigned To Pill
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Person,
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(10.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = task.assignedTo,
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                        )
+                                                    }
+                                                }
+
+                                                // Due Date Pill
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.CalendarToday,
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(10.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = task.dueDate,
+                                                            fontSize = 9.sp,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.deleteProjectTask(task.id) },
+                                        modifier = Modifier.testTag("delete_task_btn_${task.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete task",
+                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddTaskDialog && selectedProj != null) {
+        var taskTitle by remember { mutableStateOf("") }
+        var taskDesc by remember { mutableStateOf("") }
+        var assignedTo by remember { mutableStateOf("") }
+        var targetDate by remember { mutableStateOf("") }
+
+        Dialog(onDismissRequest = { showAddTaskDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("add_task_dialog")
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Add Board Task",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        IconButton(onClick = { showAddTaskDialog = false }) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = taskTitle,
+                        onValueChange = { taskTitle = it },
+                        label = { Text("Task Title") },
+                        placeholder = { Text("e.g. Set up Retrofit services") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("new_task_title_input")
+                    )
+
+                    OutlinedTextField(
+                        value = taskDesc,
+                        onValueChange = { taskDesc = it },
+                        label = { Text("Task Description") },
+                        placeholder = { Text("Outline specific project objectives") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("new_task_desc_input")
+                    )
+
+                    OutlinedTextField(
+                        value = assignedTo,
+                        onValueChange = { assignedTo = it },
+                        label = { Text("Assigned To") },
+                        placeholder = { Text("e.g. Lead Dev or Mentor Name") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("new_task_assigned_input")
+                    )
+
+                    OutlinedTextField(
+                        value = targetDate,
+                        onValueChange = { targetDate = it },
+                        label = { Text("Target Due Date") },
+                        placeholder = { Text("e.g. July 25, 2026") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("new_task_due_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Button(
+                        onClick = {
+                            if (taskTitle.isNotBlank()) {
+                                viewModel.addProjectTask(
+                                    projectId = selectedProj.id,
+                                    title = taskTitle,
+                                    description = taskDesc,
+                                    assignedTo = assignedTo.ifBlank { "Collaborator" },
+                                    dueDate = targetDate.ifBlank { "TBD" }
+                                )
+                                showAddTaskDialog = false
+                            } else {
+                                viewModel.showToast("Task title cannot be empty.")
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("submit_board_task_btn")
+                    ) {
+                        Text("Create Collaborative Task", fontWeight = FontWeight.Bold)
                     }
                 }
             }
