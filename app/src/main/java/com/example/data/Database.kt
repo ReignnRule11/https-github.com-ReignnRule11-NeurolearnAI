@@ -241,9 +241,14 @@ interface StudyTaskDao {
         TechStudyRoom::class,
         TechRoomMessage::class,
         ScratchpadItem::class,
-        MentorMatch::class
+        MentorMatch::class,
+        ResearchPaper::class,
+        BlockchainCertificate::class,
+        AccreditedExamQuestion::class,
+        PlatformPartner::class,
+        PartnershipApplication::class
     ],
-    version = 13,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -262,6 +267,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun techRoomMessageDao(): TechRoomMessageDao
     abstract fun scratchpadItemDao(): ScratchpadItemDao
     abstract fun mentorMatchDao(): MentorMatchDao
+    abstract fun researchPaperDao(): ResearchPaperDao
+    abstract fun blockchainCertificateDao(): BlockchainCertificateDao
+    abstract fun accreditedExamQuestionDao(): AccreditedExamQuestionDao
+    abstract fun platformPartnerDao(): PlatformPartnerDao
+    abstract fun partnershipApplicationDao(): PartnershipApplicationDao
 
     companion object {
         @Volatile
@@ -782,6 +792,245 @@ abstract class AppDatabase : RoomDatabase() {
             for (phr in starterPhrases) {
                 db.savedPhraseDao().insertPhrase(phr)
             }
+
+            // Seed Research Papers & Marketplace Listings
+            val starterPapers = listOf(
+                ResearchPaper(
+                    id = "paper_zkp_identity",
+                    title = "Zero-Knowledge Proofs in Decentralized Identity Verification",
+                    authors = "Dr. Elena Rostova, Prof. Alan Turing",
+                    abstractText = "This paper evaluates the performance characteristics of zk-SNARKs and zk-STARKs in constrained mobile operating systems, demonstrating a lightweight, secure client-side proof generation implementation.",
+                    category = "Web3 & Blockchain",
+                    content = "Full Research & Knowledge Transfer Blueprint:\n\n1. Introduction\nZero-Knowledge Proofs (ZKPs) allow a prover to demonstrate to a verifier that a statement is true without revealing any information beyond the statement itself. In mobile environments, ZKPs offer powerful capabilities for private credentials, localized verification, and gas-efficient scalability.\n\n2. Practical Implementation Steps\nTo build a verified login using ZKPs in Jetpack Compose, the client generates a cryptographic proof locally, which is then verified against an on-chain smart contract or decentralized registry. Our Android implementation leverages the Halo2 or Groth16 proving system with optimized WASM bindings.\n\n3. Code Blueprint (Solidity Verification)\n```solidity\ncontract ZKPVerifier {\n    function verifyProof(bytes calldata proof, uint256[] calldata inputs) external view returns (bool) {\n        // Cryptographic check here\n        return true;\n    }\n}\n```\n\n4. Conclusion\nBy offloading proving computation to client devices, local cryptographic integrity is maintained with minimal energy expenditure and high resistance to eavesdropping attacks.",
+                    coinCost = 30,
+                    isPurchased = false,
+                    publisherName = "MIT Cryptography Labs",
+                    publishYear = 2025,
+                    fileSizeKb = 1450,
+                    reviewsCount = 42,
+                    rating = 4.8f
+                ),
+                ResearchPaper(
+                    id = "paper_consensus_mechanisms",
+                    title = "Decentralized Consensus Mechanisms: PBFT vs Raft in Private Ledgers",
+                    authors = "Satoshi Nakamoto Jr., Leslie Lamport",
+                    abstractText = "An academic review of Practical Byzantine Fault Tolerance versus Leader-based consensus in private educational enterprise blockchain systems.",
+                    category = "Web3 & Blockchain",
+                    content = "Comprehensive Analysis:\n\n1. Overview\nConsensus algorithms ensure a unified state across distributed ledger networks. PBFT guarantees safety and liveness under up to 1/3 Byzantine actors, while Raft focuses on crash-fault tolerance (CFT).\n\n2. Key Differences Table\n- PBFT: 3f+1 nodes required, 3-phase commit overhead (O(n^2) message complexity).\n- Raft: 2f+1 nodes required, simple leader replication (O(n) complexity).\n\n3. Verifiable Certification Path\nOnce complete, click 'Mint Verifiable Blockchain Certificate' to commit your research completion hash to the local sandbox chain block.",
+                    coinCost = 0,
+                    isPurchased = true, // Free paper, initially purchased
+                    publisherName = "IEEE Distributed Systems",
+                    publishYear = 2026,
+                    fileSizeKb = 880,
+                    reviewsCount = 18,
+                    rating = 4.4f
+                ),
+                ResearchPaper(
+                    id = "paper_audio_synthesizers",
+                    title = "Deep Neural Representation for Dynamic Real-time Audio Synthesizers",
+                    authors = "Prof. Clara Oswald, Dr. John Smith",
+                    abstractText = "This research paper presents a modern approach to training lightweight neural regression models that approximate complex multi-oscillator breathing synth modulators inside client applications.",
+                    category = "Artificial Intelligence",
+                    content = "1. Abstract & Introduction\nWe introduce a dynamic neural synthesis method that optimizes physical acoustic waveforms on lightweight mobile CPUs. By predicting the Fourier wave components in real-time, we drastically reduce memory footprint.\n\n2. Wave Form Synthesizer Code\n```kotlin\nval sampleRate = 44100\nval amplitude = 0.5f\nval frequency = 440.0 // A4 note\n```\n\n3. Deployment Guidelines\nQuantizing weights to INT8 ensures flawless, stutter-free performance during background breathing focus sessions.",
+                    coinCost = 40,
+                    isPurchased = false,
+                    publisherName = "Stanford AI Research",
+                    publishYear = 2026,
+                    fileSizeKb = 2100,
+                    reviewsCount = 31,
+                    rating = 4.7f
+                ),
+                ResearchPaper(
+                    id = "paper_edge_intelligence",
+                    title = "Advanced Micro-Architectures for Edge Intelligence",
+                    authors = "Dr. Lisa Su, René Descartes",
+                    abstractText = "Analyzing how dynamic sub-networks can be executed synchronously on edge processors without cloud-based REST scheduling overhead.",
+                    category = "Artificial Intelligence",
+                    content = "Comprehensive Edge Execution Guide.\n\n1. Abstract\nCompressing neural networks via INT8 quantization enables 10x throughput increases with less than 1% degradation in cognitive accuracy. This paper details compiler optimizations and hardware register mappings.\n\n2. Benchmarks\nExecution latency drops from 450ms to 42ms for a standard MobileNet-v3 backbone model running locally on smartphone neural processing units (NPUs).",
+                    coinCost = 0,
+                    isPurchased = true, // Free
+                    publisherName = "ACM Computing Frontiers",
+                    publishYear = 2025,
+                    fileSizeKb = 1250,
+                    reviewsCount = 65,
+                    rating = 4.9f
+                )
+            )
+            for (paper in starterPapers) {
+                db.researchPaperDao().insertPaper(paper)
+            }
+
+            // Preseed Accredited Examination Questions
+            val starterQuestions = listOf(
+                AccreditedExamQuestion(
+                    country = "Nigeria",
+                    governingBody = "WAEC (West African Examinations Council)",
+                    subject = "Mathematics",
+                    acreditationStatus = "Regionally Approved & Governed",
+                    questionText = "In a class of 40 students, 25 offer Physics and 18 offer Chemistry. If 5 students offer neither subject, how many students offer both Physics and Chemistry?",
+                    difficulty = "Medium",
+                    step1Title = "Identify the Universal Set and Subsets",
+                    step1Explain = "Total students in the class (Universal set) U = 40. Students offering neither subject = 5. Therefore, students offering at least one subject (Physics or Chemistry) P ∪ C = 40 - 5 = 35 students.",
+                    step2Title = "Formulate the Set Intersection Equation",
+                    step2Explain = "Using the formula for union of sets: n(P ∪ C) = n(P) + n(C) - n(P ∩ C). Let x be the number of students who offer both subjects, which is n(P ∩ C). Substitute the values: 35 = 25 + 18 - x.",
+                    step3Title = "Solve for the Intersection Variable",
+                    step3Explain = "Simplify the equation: 35 = 43 - x. Isolating x: x = 43 - 35 = 8. Therefore, 8 students in the class offer both Physics and Chemistry.",
+                    correctAnswer = "8 students"
+                ),
+                AccreditedExamQuestion(
+                    country = "Kenya",
+                    governingBody = "KNEC (Kenya National Examinations Council - KCSE)",
+                    subject = "Physics",
+                    acreditationStatus = "Nationally Accredited & Approved",
+                    questionText = "A body starts from rest and accelerates uniformly at 4 m/s² for 6 seconds. Calculate the total distance traveled during this time interval.",
+                    difficulty = "Easy",
+                    step1Title = "Extract Kinematic Given Values",
+                    step1Explain = "Initial velocity (starts from rest) u = 0 m/s. Constant acceleration a = 4 m/s². Time duration t = 6 seconds.",
+                    step2Title = "Select the Correct Equation of Motion",
+                    step2Explain = "To find the displacement/distance (s), select the kinematic equation: s = u*t + 0.5 * a * t².",
+                    step3Title = "Calculate the Final Distance Value",
+                    step3Explain = "Substitute the variables: s = (0 * 6) + 0.5 * 4 * (6)². s = 0 + 2 * 36 = 72 meters. Thus, the body travels a distance of 72 meters.",
+                    correctAnswer = "72 meters"
+                ),
+                AccreditedExamQuestion(
+                    country = "United States",
+                    governingBody = "College Board (AP Computer Science A)",
+                    subject = "Computer Science",
+                    acreditationStatus = "Globally Accredited / College Board Approved",
+                    questionText = "What is the return value of the recursive method call mystery(4)?\n\npublic int mystery(int n) {\n    if (n <= 1) return 1;\n    return n * mystery(n - 1);\n}",
+                    difficulty = "Medium",
+                    step1Title = "Trace Recursion Base Cases and Transitions",
+                    step1Explain = "Method call starts with n = 4. Since 4 is greater than 1, it triggers the recursive step: 4 * mystery(3). This continues the recursion stack.",
+                    step2Title = "Build the Recursion Call Stack",
+                    step2Explain = "Trace subsequent levels:\nmystery(3) returns 3 * mystery(2)\nmystery(2) returns 2 * mystery(1)\nmystery(1) matches base case (1 <= 1) and returns 1 immediately.",
+                    step3Title = "Unwind the Stack with Evaluations",
+                    step3Explain = "Unwind the return chain starting from the base case:\nmystery(2) = 2 * 1 = 2\nmystery(3) = 3 * 2 = 6\nmystery(4) = 4 * 6 = 24. Thus, the method returns 24.",
+                    correctAnswer = "24"
+                ),
+                AccreditedExamQuestion(
+                    country = "United Kingdom",
+                    governingBody = "Ofqual (Pearson Edexcel A-Level)",
+                    subject = "Mathematics",
+                    acreditationStatus = "Regionally Accredited & Standardized",
+                    questionText = "Find the derivative of the function f(x) = 3x⁴ - 5x² + 7 with respect to x.",
+                    difficulty = "Medium",
+                    step1Title = "Apply the Calculus Power Rule",
+                    step1Explain = "The power rule states that d/dx (x^n) = n * x^(n-1). For constant terms, d/dx (c) = 0. We will differentiate each term of the polynomial separately.",
+                    step2Title = "Differentiate the Individual Algebraic Terms",
+                    step2Explain = "Differentiate Term 1: d/dx (3x⁴) = 3 * 4x³ = 12x³.\nDifferentiate Term 2: d/dx (-5x²) = -5 * 2x = -10x.\nDifferentiate Term 3: d/dx (7) = 0.",
+                    step3Title = "Combine Differentiated Terms",
+                    step3Explain = "Combine the differentiated outputs: f'(x) = 12x³ - 10x. This is the first derivative representation of the original function.",
+                    correctAnswer = "12x³ - 10x"
+                ),
+                AccreditedExamQuestion(
+                    country = "India",
+                    governingBody = "CBSE (Central Board of Secondary Education)",
+                    subject = "Chemistry",
+                    acreditationStatus = "Nationally Approved Board Syllabus",
+                    questionText = "Determine the pH value of a 1.0 * 10⁻³ M aqueous solution of hydrochloric acid (HCl) at 25°C.",
+                    difficulty = "Easy",
+                    step1Title = "Establish Species Ionization Status",
+                    step1Explain = "HCl is a strong monobasic acid that dissociates completely in water: HCl -> H⁺ + Cl⁻. Therefore, the hydronium ion concentration [H⁺] is equal to the acid concentration: [H⁺] = 1.0 * 10⁻³ M.",
+                    step2Title = "Introduce the Standard pH Formula",
+                    step2Explain = "The pH is mathematically defined as the negative logarithm (base 10) of the hydrogen ion concentration: pH = -log₁₀[H⁺].",
+                    step3Title = "Perform Logarithmic Substitution",
+                    step3Explain = "Substitute the concentration: pH = -log₁₀(1.0 * 10⁻³). pH = -(-3) = 3. Thus, the pH of the HCl solution is 3.",
+                    correctAnswer = "3"
+                ),
+                AccreditedExamQuestion(
+                    country = "South Africa",
+                    governingBody = "UMALUSI (National Senior Certificate)",
+                    subject = "Physics",
+                    acreditationStatus = "Nationally Governed & Standardized",
+                    questionText = "A 2 kg friction-free block is pulled horizontally along a table by a constant force of 10 N. Calculate the resulting acceleration of the block.",
+                    difficulty = "Easy",
+                    step1Title = "Identify Governed Physics Laws",
+                    step1Explain = "According to Newton's Second Law of Motion, the net external force acting on an object is proportional to its mass and acceleration: F_net = m * a.",
+                    step2Title = "Isolate the Target Acceleration Variable",
+                    step2Explain = "Rearrange the equation to express acceleration as the subject: a = F_net / m.",
+                    step3Title = "Substitute Known Dynamics Values",
+                    step3Explain = "Substitute force (10 N) and mass (2 kg): a = 10 / 2 = 5 m/s². The resulting acceleration of the block is 5 m/s².",
+                    correctAnswer = "5 m/s²"
+                )
+            )
+            db.accreditedExamQuestionDao().insertAllQuestions(starterQuestions)
+
+            // Preseed Strategic Platform Partners
+            val starterPartners = listOf(
+                PlatformPartner(
+                    id = "partner_stanford",
+                    name = "Stanford University (Department of CS)",
+                    type = "University",
+                    description = "Provides academic alignment, early research sandbox resources, and technical support for student-led software development.",
+                    fundingRange = "$15,000 - $120,000",
+                    focusAreas = "Generative AI, Quantum Computing, Cryptography",
+                    supportProvided = "Grants, Lab Access & Professor Mentorship"
+                ),
+                PlatformPartner(
+                    id = "partner_nitda",
+                    name = "National Information Technology Development Agency (NITDA)",
+                    type = "Government Parastatal",
+                    description = "The principal governing IT development agency in Nigeria, backing young indigenous talent, software projects, and digital literacy.",
+                    fundingRange = "₦5,000,000 - ₦35,000,000 ($5,000 - $35,000)",
+                    focusAreas = "STEM Outreach, Local Talent Training, Open-source Solutions",
+                    supportProvided = "Sponsorship Grants, Legal Advisory & Sandboxes"
+                ),
+                PlatformPartner(
+                    id = "partner_yc",
+                    name = "Y Combinator (YC Academy Support)",
+                    type = "Accelerator",
+                    description = "The world's premier tech startup incubator, providing seed resources, venture networks, and mentoring to student-led teams.",
+                    fundingRange = "$500,000 (Standard Seed SAFE)",
+                    focusAreas = "SaaS, AI Engineering, Web3 Infrastructures",
+                    supportProvided = "Venture Seed Capital, Partner Advising & Pitch Prep"
+                ),
+                PlatformPartner(
+                    id = "partner_sequoia",
+                    name = "Sequoia Capital (Launchpad Syndicate)",
+                    type = "Venture Capital",
+                    description = "A legendary venture capital firm investing in game-changing software, Web3 consensus, and deep-tech hardware concepts.",
+                    fundingRange = "$100,000 - $1,500,000",
+                    focusAreas = "AI Agents, Blockchain Consensus, Robotics, Energy",
+                    supportProvided = "Strategic Seed Capital, Talent Acquisition, Global Partnerships"
+                ),
+                PlatformPartner(
+                    id = "partner_unicef",
+                    name = "UNICEF (STEM Education Fund)",
+                    type = "NGO",
+                    description = "Leading non-governmental body accelerating digital inclusion, localized STEM labs, and basic computer science education.",
+                    fundingRange = "$10,000 - $75,000",
+                    focusAreas = "Inclusive Digital Education, Girls in STEM, Rural Tech Hubs",
+                    supportProvided = "Non-dilutive Impact Grants, Field Trials, Hardware Kits"
+                ),
+                PlatformPartner(
+                    id = "partner_techstars",
+                    name = "Techstars (Impact Venture Syndicate)",
+                    type = "Accelerator",
+                    description = "A global startup network providing immersive mentoring, community hubs, and fundraising paths for student tech developers.",
+                    fundingRange = "$120,000",
+                    focusAreas = "EdTech, AgriTech, Clean Energy Solutions",
+                    supportProvided = "Seed Capital, Executive Coaching & Partner Network"
+                ),
+                PlatformPartner(
+                    id = "partner_mastercard",
+                    name = "Mastercard Foundation",
+                    type = "NGO",
+                    description = "Promotes youth technical employment, micro-enterprise tools, and inclusive financial infrastructures in emerging nations.",
+                    fundingRange = "$20,000 - $150,000",
+                    focusAreas = "Digital Finance, Applied ICT Skills, Agri-processing Tech",
+                    supportProvided = "Platform Funding Grants, Local Ecosystem Networking"
+                ),
+                PlatformPartner(
+                    id = "partner_nairobi_tech",
+                    name = "Nairobi Technical College",
+                    type = "Technical College",
+                    description = "A prestigious technical institute focusing on applied hardware prototypes, IoT systems, and vocational robotics.",
+                    fundingRange = "N/A (Platform Support & Tooling)",
+                    focusAreas = "Applied Robotics, IoT Micro-grids, FabLab Machinery",
+                    supportProvided = "Makerspace Machinery, Hardware Labs & Component Supply"
+                )
+            )
+            db.platformPartnerDao().insertAllPartners(starterPartners)
         }
     }
 }
@@ -1024,6 +1273,155 @@ interface MentorMatchDao {
 
     @Query("DELETE FROM mentor_matches WHERE projectId = :projectId")
     suspend fun deleteMatchesForProject(projectId: String)
+}
+
+@Entity(tableName = "research_papers")
+data class ResearchPaper(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val authors: String,
+    val abstractText: String,
+    val category: String, // "Web3 & Blockchain", "Artificial Intelligence", etc.
+    val content: String,
+    val coinCost: Int,
+    val isPurchased: Boolean = false,
+    val publisherName: String,
+    val publishYear: Int,
+    val fileSizeKb: Int,
+    val reviewsCount: Int = 0,
+    val rating: Float = 4.5f
+)
+
+@Dao
+interface ResearchPaperDao {
+    @Query("SELECT * FROM research_papers ORDER BY publishYear DESC, title ASC")
+    fun getAllPapers(): Flow<List<ResearchPaper>>
+
+    @Query("SELECT * FROM research_papers WHERE id = :id LIMIT 1")
+    suspend fun getPaperById(id: String): ResearchPaper?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPaper(paper: ResearchPaper)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllPapers(papers: List<ResearchPaper>)
+
+    @Query("UPDATE research_papers SET isPurchased = :purchased WHERE id = :id")
+    suspend fun updatePurchaseStatus(id: String, purchased: Boolean)
+
+    @Query("UPDATE research_papers SET reviewsCount = reviewsCount + 1 WHERE id = :id")
+    suspend fun incrementReviews(id: String)
+}
+
+@Entity(tableName = "blockchain_certificates")
+data class BlockchainCertificate(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val recipientName: String,
+    val title: String,
+    val sourceName: String,
+    val type: String, // "RESEARCH", "PROJECT", "ROOM"
+    val dateIssued: Long = System.currentTimeMillis(),
+    val blockNumber: Int,
+    val nonce: Int,
+    val previousHash: String,
+    val hash: String,
+    val transactionHash: String
+)
+
+@Dao
+interface BlockchainCertificateDao {
+    @Query("SELECT * FROM blockchain_certificates ORDER BY dateIssued DESC")
+    fun getAllCertificates(): Flow<List<BlockchainCertificate>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCertificate(certificate: BlockchainCertificate)
+
+    @Query("DELETE FROM blockchain_certificates WHERE id = :id")
+    suspend fun deleteCertificate(id: String)
+
+    @Query("DELETE FROM blockchain_certificates")
+    suspend fun clearAllCertificates()
+}
+
+@Entity(tableName = "accredited_exam_questions")
+data class AccreditedExamQuestion(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val country: String,
+    val governingBody: String,
+    val subject: String,
+    val acreditationStatus: String, // "Globally Accredited", "Regionally Approved", "Nationally Governed"
+    val questionText: String,
+    val difficulty: String = "Medium",
+    val step1Title: String,
+    val step1Explain: String,
+    val step2Title: String,
+    val step2Explain: String,
+    val step3Title: String,
+    val step3Explain: String,
+    val correctAnswer: String
+)
+
+@Dao
+interface AccreditedExamQuestionDao {
+    @Query("SELECT * FROM accredited_exam_questions ORDER BY governingBody ASC, subject ASC")
+    fun getAllQuestions(): Flow<List<AccreditedExamQuestion>>
+
+    @Query("SELECT * FROM accredited_exam_questions WHERE country = :country")
+    fun getQuestionsByCountry(country: String): Flow<List<AccreditedExamQuestion>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertQuestion(question: AccreditedExamQuestion)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllQuestions(questions: List<AccreditedExamQuestion>)
+}
+
+@Entity(tableName = "platform_partners")
+data class PlatformPartner(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val type: String, // "University", "Technical College", "NGO", "Government Parastatal", "STEM Community", "Accelerator", "Venture Capital"
+    val description: String,
+    val fundingRange: String,
+    val focusAreas: String,
+    val supportProvided: String
+)
+
+@Dao
+interface PlatformPartnerDao {
+    @Query("SELECT * FROM platform_partners ORDER BY type ASC, name ASC")
+    fun getAllPartners(): Flow<List<PlatformPartner>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPartner(partner: PlatformPartner)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllPartners(partners: List<PlatformPartner>)
+}
+
+@Entity(tableName = "partnership_applications")
+data class PartnershipApplication(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val partnerId: String,
+    val partnerName: String,
+    val projectName: String,
+    val applicantName: String,
+    val pitchText: String,
+    val fundingRequested: String,
+    val status: String = "Pending Review", // "Pending Review", "Approved & Funded", "Matched"
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface PartnershipApplicationDao {
+    @Query("SELECT * FROM partnership_applications ORDER BY timestamp DESC")
+    fun getAllApplications(): Flow<List<PartnershipApplication>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertApplication(application: PartnershipApplication)
+
+    @Query("DELETE FROM partnership_applications")
+    suspend fun clearAllApplications()
 }
 
 

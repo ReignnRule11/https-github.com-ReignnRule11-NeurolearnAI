@@ -208,6 +208,7 @@ fun NeuroLearnAppShell() {
                     Screen.Profile -> ProfileScreen(viewModel = viewModel)
                     Screen.TechHub -> TechHubScreen(viewModel = viewModel)
                     Screen.LanguageLab -> LanguageLabScreen(viewModel = viewModel)
+                    Screen.ExamPartnershipsHub -> ExamPartnershipsHubScreen(viewModel = viewModel)
                     is Screen.TutorChat -> TutorScreen(viewModel = viewModel, conceptId = screen.conceptId, deckId = screen.deckId)
                     is Screen.PdfIntelligence -> PdfIntelligenceScreen(viewModel = viewModel, conceptId = screen.conceptId ?: "limits")
                     is Screen.QuizGame -> QuizScreen(viewModel = viewModel, conceptId = screen.conceptId, difficulty = screen.difficulty)

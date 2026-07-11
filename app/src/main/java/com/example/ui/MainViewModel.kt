@@ -47,6 +47,7 @@ sealed interface Screen {
     object DigitalTwinDashboard : Screen
     object StudyPlanner : Screen
     data class TechStudyRoom(val roomId: String) : Screen
+    object ExamPartnershipsHub : Screen
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -69,6 +70,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val techRoomMessageDao = database.techRoomMessageDao()
     private val scratchpadItemDao = database.scratchpadItemDao()
     private val mentorMatchDao = database.mentorMatchDao()
+    private val researchPaperDao = database.researchPaperDao()
+    private val blockchainCertificateDao = database.blockchainCertificateDao()
+    private val accreditedExamQuestionDao = database.accreditedExamQuestionDao()
+    private val platformPartnerDao = database.platformPartnerDao()
+    private val partnershipApplicationDao = database.partnershipApplicationDao()
 
     // --- State Flows ---
     
@@ -86,6 +92,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val profile: StateFlow<LearnerProfile?> = profileDao.getProfile()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val accreditedExamQuestions: StateFlow<List<AccreditedExamQuestion>> = accreditedExamQuestionDao.getAllQuestions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val platformPartners: StateFlow<List<PlatformPartner>> = platformPartnerDao.getAllPartners()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val partnershipApplications: StateFlow<List<PartnershipApplication>> = partnershipApplicationDao.getAllApplications()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allConcepts: StateFlow<List<ConceptMastery>> = conceptDao.getAllConcepts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -106,6 +121,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val techStudyRooms: StateFlow<List<TechStudyRoom>> = techStudyRoomDao.getAllRooms()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allResearchPapers: StateFlow<List<ResearchPaper>> = researchPaperDao.getAllPapers()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allCertificates: StateFlow<List<BlockchainCertificate>> = blockchainCertificateDao.getAllCertificates()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedProjectId = MutableStateFlow<String?>(null)
@@ -3966,6 +3987,140 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 _isAILoading.value = false
             }
+        }
+    }
+
+    // --- Knowledge Transfer, Marketplace & Blockchain Certificate Operations ---
+
+    fun purchaseResearchPaper(paperId: String) {
+        viewModelScope.launch {
+            val currentProfile = profile.value ?: return@launch
+            val paper = researchPaperDao.getPaperById(paperId) ?: return@launch
+            if (paper.isPurchased) {
+                showToast("Already purchased!")
+                return@launch
+            }
+            if (!currentProfile.isPremium) {
+                if (currentProfile.coins < paper.coinCost) {
+                    showToast("Insufficient NeuroCoins! Buy a pack in the Store or complete tasks.")
+                    return@launch
+                }
+                val updatedProfile = currentProfile.copy(coins = currentProfile.coins - paper.coinCost)
+                profileDao.insertOrUpdateProfile(updatedProfile)
+            }
+            researchPaperDao.updatePurchaseStatus(paperId, true)
+            showToast("Successfully unlocked: ${paper.title}! 🪙")
+        }
+    }
+
+    fun buyCoinsPack(packName: String, coinsAmount: Int, priceUsd: Double) {
+        viewModelScope.launch {
+            val currentProfile = profile.value ?: return@launch
+            val updatedProfile = currentProfile.copy(coins = currentProfile.coins + coinsAmount)
+            profileDao.insertOrUpdateProfile(updatedProfile)
+            showToast("Successfully purchased $packName! +$coinsAmount NeuroCoins added to wallet. 🪙")
+        }
+    }
+
+    fun upgradeToPremiumMax() {
+        viewModelScope.launch {
+            val currentProfile = profile.value ?: return@launch
+            val updatedProfile = currentProfile.copy(isPremium = true)
+            profileDao.insertOrUpdateProfile(updatedProfile)
+            showToast("👑 Welcome to NeuroLearn Premium Max! Unlimited matched sessions & marketplace.")
+        }
+    }
+
+    fun mintBlockchainCertificate(
+        title: String,
+        sourceName: String,
+        type: String,
+        onMiningProgress: (Int) -> Unit,
+        onComplete: (BlockchainCertificate) -> Unit
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            val currentProfile = profileDao.getProfileSync() ?: return@launch
+            val recipientName = currentProfile.name
+            val prevHash = if (allCertificates.value.isEmpty()) "0000000000000000000000000000000000000000000000000000000000000000" else allCertificates.value.first().hash
+            val blockNumber = allCertificates.value.size + 1
+
+            // Mining simulation
+            var nonce = 0
+            var hash = ""
+            val baseData = "$recipientName|$title|$sourceName|$type|$prevHash"
+            
+            // Generate SHA-256
+            fun sha256(input: String): String {
+                val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
+                return bytes.joinToString("") { "%02x".format(it) }
+            }
+
+            while (true) {
+                hash = sha256("$baseData|$nonce")
+                if (hash.startsWith("00")) { // Real Proof-of-Work constraint
+                    break
+                }
+                nonce++
+                if (nonce % 100 == 0) {
+                    onMiningProgress(nonce)
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+
+            val txHash = "0x" + UUID.randomUUID().toString().replace("-", "").take(64)
+            val certificate = BlockchainCertificate(
+                recipientName = recipientName,
+                title = title,
+                sourceName = sourceName,
+                type = type,
+                blockNumber = blockNumber,
+                nonce = nonce,
+                previousHash = prevHash,
+                hash = hash,
+                transactionHash = txHash
+            )
+
+            blockchainCertificateDao.insertCertificate(certificate)
+            
+            // Credit completion XP
+            val updatedProfile = currentProfile.copy(xp = currentProfile.xp + 40)
+            profileDao.insertOrUpdateProfile(updatedProfile)
+
+            launch(kotlinx.coroutines.Dispatchers.Main) {
+                onComplete(certificate)
+                showToast("Certificate minted on-chain & +40 XP awarded! ⛓️")
+            }
+        }
+    }
+
+    fun clearAllCertificates() {
+        viewModelScope.launch {
+            blockchainCertificateDao.clearAllCertificates()
+            showToast("Local ledger database reset.")
+        }
+    }
+
+    fun submitPartnershipApplication(
+        partnerId: String,
+        partnerName: String,
+        projectName: String,
+        applicantName: String,
+        pitchText: String,
+        fundingRequested: String
+    ) {
+        viewModelScope.launch {
+            val app = PartnershipApplication(
+                partnerId = partnerId,
+                partnerName = partnerName,
+                projectName = projectName,
+                applicantName = applicantName,
+                pitchText = pitchText,
+                fundingRequested = fundingRequested,
+                status = "Pending Review",
+                timestamp = System.currentTimeMillis()
+            )
+            partnershipApplicationDao.insertApplication(app)
+            showToast("Application submitted to $partnerName! 🚀")
         }
     }
 }

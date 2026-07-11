@@ -43,11 +43,60 @@ NeuroLearn AI adopts a balanced, dual-tier monetization loop designed to reward 
 
 ---
 
+## 📚 Global Repository & Academic Knowledge Transfer Marketplace
+
+NeuroLearn AI integrates a state-of-the-art **World Repository for Academic Research and Technical Blueprints**. Learners can acquire advanced technical knowledge while validating their learning milestones directly on-chain.
+
+### 🧠 How It Works
+1. **Repository Access**: Learners can browse peer-reviewed research papers (e.g., Web3 Consensus, Neural Networks, Edge Computing).
+2. **Knowledge Marketplace**:
+   - Free or open abstracts can be downloaded immediately.
+   - Advanced technical papers can be unlocked using **NeuroCoins** (e.g., 30 coins), directly supporting scholarly authors.
+   - Premium Max subscribers bypass all coin requirements with unlimited instant access.
+3. **On-Chain Certification (Mining Simulation)**:
+   - Upon studying a paper in full, the learner can opt to complete the study.
+   - This launches a **Simulated Proof-of-Work (PoW) Mining Miner**.
+   - The miner runs a live cryptographic loop on the device's JVM, searching for a SHA-256 hash that begins with `00` (representing network difficulty).
+   - Once mined, the system issues a **Blockchain Certificate** containing a verifiable transaction hash (`0x...`), Block Number, Nonce, and previous block's SHA-256 hash.
+   - Completing studies and mining certificates rewards the user with **+40 XP** to level up.
+4. **Verifiable Ledger Verification**:
+   - Inside the **Certificates** tab, the learner's entire block history is rendered.
+   - A **Live Cryptographic Verification Check** button re-hashes all block headers mathematically:
+     `SHA-256(recipientName | title | sourceName | type | previousHash | nonce)`
+     to verify block authenticity and guarantee mathematical integrity live on-screen.
+
+---
+
+## 🎓 Governing Exam Boards & Strategic Partnerships Ecosystem
+
+NeuroLearn AI introduces an innovative regionalized module aligning **Accredited National Exam Boards** with a **Global Venture, NGO & Institutional Alliance Network**:
+
+### 🧠 1. Accredited Exam Boards (Region-Sensitive Question Banks)
+- **Local Governing Bodies**: Students can dynamically filter and browse certified standard exams based on their country's regulatory authorities:
+  - **Nigeria**: West African Examinations Council (WAEC), JAMB, NECO.
+  - **Kenya**: Kenya National Examinations Council (KNEC - KCSE).
+  - **United States**: College Board Advanced Placement (AP) Standards.
+  - **United Kingdom**: Ofqual Standards (Edexcel & AQA syllabus).
+  - **India**: CBSE Board national curricula benchmarks.
+  - **South Africa**: UMALUSI National Senior Certificate benchmarks.
+- **Accredited Step-by-Step Solutions**: Each mathematical or scientific question is served with a fully verified, board-compliant **3-Step procedural layout** detailing the conceptual formula, variables, calculation, and final solution with visual indicators.
+
+### 🌐 2. Strategic Partnerships & Funding Hub (Ecosystem Support)
+- **Alliance Pathways**: We map institutional connections across several major categories to provide real platform and funding support for active learner projects:
+  - **Universities & Tech Colleges**: e.g., Stanford University, Nairobi Technical College.
+  - **NGOs**: e.g., UNICEF STEM Fund, Mastercard Foundation.
+  - **Government Parastatals**: e.g., National Information Technology Development Agency (NITDA).
+  - **Accelerators & VCs**: e.g., Y Combinator (YC Academy Support), Sequoia Capital (Launchpad Syndicate), Techstars.
+- **Strategic Pitch Builder (Funding Sandboxes)**: Learners can select any strategic partner and submit a formal, secure digital sandbox proposal (specifying Project Name, Lead Investigator, Requested Support, and an Entrepreneurial Pitch). 
+- **Application History Log**: Active proposals are logged in real-time within the local SQLite ledger to monitor evaluation, sandbox matches, and funding allocations.
+
+---
+
 ## 🗄️ Architecture & Database Schema
 
 NeuroLearn AI is architected using **MVVM** and modern **Room Database** local storage.
 
-### Data Models
+### Core Data Models (Latest Version: 15)
 ```kotlin
 @Entity(tableName = "learner_profiles")
 data class LearnerProfile(
@@ -72,6 +121,80 @@ data class MentorMatch(
     val milestonesText: String,
     val matchedAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "research_papers")
+data class ResearchPaper(
+    @PrimaryKey val id: String,
+    val title: String,
+    val authors: String,
+    val abstractText: String,
+    val content: String,
+    val category: String,
+    val coinCost: Int,
+    val isPurchased: Boolean,
+    val rating: Double,
+    val reviewsCount: Int,
+    val fileSizeKb: Int,
+    val publishYear: Int,
+    val publisherName: String
+)
+
+@Entity(tableName = "blockchain_certificates")
+data class BlockchainCertificate(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val recipientName: String,
+    val title: String,
+    val sourceName: String,
+    val type: String, // e.g. "RESEARCH" or "MILESTONE"
+    val blockNumber: Int,
+    val nonce: Int,
+    val previousHash: String,
+    val hash: String,
+    val transactionHash: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "accredited_exam_questions")
+data class AccreditedExamQuestion(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val country: String,
+    val governingBody: String,
+    val subject: String,
+    val acreditationStatus: String,
+    val questionText: String,
+    val difficulty: String = "Medium",
+    val step1Title: String,
+    val step1Explain: String,
+    val step2Title: String,
+    val step2Explain: String,
+    val step3Title: String,
+    val step3Explain: String,
+    val correctAnswer: String
+)
+
+@Entity(tableName = "platform_partners")
+data class PlatformPartner(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val type: String,
+    val description: String,
+    val fundingRange: String,
+    val focusAreas: String,
+    val supportProvided: String
+)
+
+@Entity(tableName = "partnership_applications")
+data class PartnershipApplication(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val partnerId: String,
+    val partnerName: String,
+    val projectName: String,
+    val applicantName: String,
+    val pitchText: String,
+    val fundingRequested: String,
+    val status: String = "Pending Review",
+    val timestamp: Long = System.currentTimeMillis()
+)
 ```
 
 ---
@@ -83,6 +206,14 @@ Every critical component includes `Modifier.testTag` declarations for effortless
 | UI Element / Dialog | TestTag ID | Description |
 | :--- | :--- | :--- |
 | **Tab: Mentor Match** | `tech_hub_tab_mentors` | Switches active tab to the Mentor-Mentee panel. |
+| **Tab: Repository** | `tech_hub_tab_repository` | Switches active tab to the Academic & Knowledge Marketplace. |
+| **Tab: Certificates** | `tech_hub_tab_certificates` | Switches active tab to the Verifiable Blockchain Ledger. |
+| **Research Cards** | `research_paper_card_<id>` | Individual card container for an academic paper. |
+| **Buy Research Paper** | `buy_paper_btn_<id>` | Triggers coin purchase and unlocks full content. |
+| **Study Research Paper** | `read_paper_btn_<id>` | Opens detailed study modal for a purchased paper. |
+| **Mint Certificate** | `mint_research_certificate_btn` | Starts live SHA-256 cryptographic PoW mining. |
+| **Verification Check** | `verify_hash_btn_<id>` | Triggers live mathematical hash verification. |
+| **Reset Blockchain Ledger** | `reset_blockchain_ledger_btn` | Clears local database blockchain ledger blocks. |
 | **Monetization Dashboard** | `monetization_panel` | Displays profile tier, coin balance, and upgrade CTA. |
 | **Storefront Dialog** | `storefront_dialog` | Pop-up container displaying token packages. |
 | **Launch Shop Button** | `open_store_btn` | Button that opens the NeuroCoins Token Shop. |
@@ -90,12 +221,15 @@ Every critical component includes `Modifier.testTag` declarations for effortless
 | **Growth Pack Purchase** | `buy_pack_growth` | Action card to purchase 350 coins for $4.99. |
 | **Premium Pass Purchase** | `buy_pack_premium` | Action card to purchase unlimited tier for $9.99. |
 | **Upgrade Premium Button** | `upgrade_premium_btn` | Main CTA to instantly activate Premium Max. |
-| **Select Project Dropdown** | `select_project_dropdown` | Filter to select an active tech project. |
-| **Mentor Cards** | `mentor_card_0` ... `3` | Iterative cards to select custom mentors. |
-| **Request Match Button** | `mentor_match_action_btn` | Action button to invoke Gemini match generation. |
-| **Active Match Card** | `active_match_card` | Container displaying alignment analysis and milestones. |
-| **Milestone Checkboxes** | `milestone_checkbox_0` ... `2` | Interactive checkbox items to log milestone completion. |
-| **Launch Mentor Room Button** | `launch_mentor_room_btn` | Button to instantiate a live collaborative workspace. |
+| **Exam & Partners Home Card** | `home_exam_partnerships_card` | Navigation card on the HomeScreen. |
+| **Accredited Boards Tab** | `tab_questions_bank` | Tab to load regional exam question banks. |
+| **Strategic Partnerships Tab** | `tab_partnerships` | Tab to load university/VC funding networks. |
+| **Country Tab Filter** | `country_tab_<country>` | Clickable tag to switch local exam governing bodies. |
+| **Subject Filter Chip** | `filter_chip_<subject>` | Filter chip to narrow down exam subject banks. |
+| **Partner Strategic Card** | `partner_card_<id>` | Individual card representing a university, VC, or NGO. |
+| **Submit Proposal Pitch** | `apply_partner_btn_<id>` | Action button to open proposal strategic builder. |
+| **Proposal Strategic Form** | `apply_partnership_form` | Interactive form to enter pitch details. |
+| **Submit Sandbox Pitch** | `submit_partnership_btn` | Sends the pitch to local SQLite persistence and alerts board. |
 
 ---
 

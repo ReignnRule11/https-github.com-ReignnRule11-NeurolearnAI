@@ -49,6 +49,21 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
     val twinAdvice by viewModel.twinGuidanceText.collectAsStateWithLifecycle()
     val isAILoading by viewModel.isAILoading.collectAsStateWithLifecycle()
 
+    var showCustomizerDialog by remember { mutableStateOf(false) }
+
+    if (showCustomizerDialog) {
+        val currentTwinAvatar = profile?.selectedTwinAvatar ?: "socratic"
+        TwinCustomizerDialog(
+            currentTwin = currentTwinAvatar,
+            onDismiss = { showCustomizerDialog = false },
+            onSelect = { newAvatar ->
+                viewModel.updateSelectedTwinAvatar(newAvatar)
+                showCustomizerDialog = false
+                viewModel.generateDigitalTwinGuidance()
+            }
+        )
+    }
+
     // Trigger advice generation once when the screen opens if it hasn't been generated yet
     LaunchedEffect(profile) {
         if (twinAdvice == null) {
@@ -168,11 +183,12 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
                                 modifier = Modifier
                                     .size(80.dp)
                                     .clip(CircleShape)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .clickable { showCustomizerDialog = true },
                                 contentScale = ContentScale.Crop
                             )
                             Spacer(modifier = Modifier.width(16.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = twinDisplayName,
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
@@ -202,6 +218,16 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 }
+                            }
+                            IconButton(
+                                onClick = { showCustomizerDialog = true },
+                                modifier = Modifier.testTag("customize_twin_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Customize Persona",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
 
