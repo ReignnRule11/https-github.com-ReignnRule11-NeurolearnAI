@@ -68,6 +68,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val techStudyRoomDao = database.techStudyRoomDao()
     private val techRoomMessageDao = database.techRoomMessageDao()
     private val scratchpadItemDao = database.scratchpadItemDao()
+    private val mentorMatchDao = database.mentorMatchDao()
 
     // --- State Flows ---
     
@@ -691,9 +692,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             
             if (newStatus) {
                 awardXp(task.xpAwarded)
+                addCoinsReward(15)
                 // Propagate a micro increase in mastery for studying the concept
                 propagateMastery(task.conceptId, 0.05f)
-                showToast("Task completed! +${task.xpAwarded} XP")
+                showToast("Task completed! +${task.xpAwarded} XP & +15 Coins! 🪙")
             } else {
                 deductXp(task.xpAwarded)
                 propagateMastery(task.conceptId, -0.05f)
@@ -3826,6 +3828,143 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showToast("$randomPeer added a brainstorming point to the scratchpad! ✍️")
             } catch (e: Exception) {
                 // Ignore silent timeouts
+            }
+        }
+    }
+
+    // --- Mentor Matching & Monetization System ---
+
+    fun getMentorMatches(projectId: String): Flow<List<MentorMatch>> {
+        return mentorMatchDao.getMatchesForProject(projectId)
+    }
+
+    fun upgradeToPremium() {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val updated = currentProfile.copy(isPremium = true)
+            profileDao.insertOrUpdateProfile(updated)
+            showToast("Congratulations! You are now a NeuroLearn Premium Max member! 🎉")
+        }
+    }
+
+    fun purchaseCoins(amount: Int, priceCents: Int) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val updated = currentProfile.copy(coins = currentProfile.coins + amount)
+            profileDao.insertOrUpdateProfile(updated)
+            showToast("Successfully purchased $amount coins for $${priceCents / 100.0}! 🪙")
+        }
+    }
+
+    fun addCoinsReward(amount: Int) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            val updated = currentProfile.copy(coins = currentProfile.coins + amount)
+            profileDao.insertOrUpdateProfile(updated)
+        }
+    }
+
+    fun generateMentorMatch(projectId: String, projectName: String, mentorName: String, mentorExpertise: String) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            
+            // Monetization check: Free users must pay 40 coins per premium match if not Premium
+            if (!currentProfile.isPremium) {
+                if (currentProfile.coins < 40) {
+                    showToast("Insufficient coins! Spend 40 coins or upgrade to Premium Max for unlimited matching.")
+                    return@launch
+                } else {
+                    val updatedProfile = currentProfile.copy(coins = currentProfile.coins - 40)
+                    profileDao.insertOrUpdateProfile(updatedProfile)
+                    showToast("Matched! Deducted 40 coins. (Remaining: ${updatedProfile.coins} coins)")
+                }
+            } else {
+                showToast("Unlimited matching active! (Premium Max Account)")
+            }
+
+            _isAILoading.value = true
+
+            // Gather student history summary for Gemini matching
+            val allMastered = allConcepts.value
+            val masteriesSummary = allMastered.take(5).joinToString { "${it.name}: ${it.understandingScore * 100}% understanding" }
+            
+            val prompt = """
+                You are an expert technical mentor named "$mentorName" specializing in "$mentorExpertise".
+                You are matching with a student collaborating on the project "$projectName" (ID: $projectId).
+                
+                The student's learning goals are: "${currentProfile.learningGoals}".
+                The student's study style is: "${currentProfile.learningStyle}".
+                The student's recent study history:
+                $masteriesSummary
+                
+                Please generate a highly professional, detailed mentor matching assessment.
+                Format your response exactly as a JSON object with these fields (valid JSON ONLY, no backticks, no markdown):
+                {
+                  "alignmentScore": <an integer between 75 and 99 reflecting how well your skills match their project and learning style>,
+                  "analysisText": "<A highly encouraging 3-sentence matching analysis explaining why you are the perfect mentor for their project, mapping your expertise directly to their goals>",
+                  "milestonesText": "<A list of 3 concrete learning/project milestones with checkbox emojis that you will help them complete (under 3 sentences total)>"
+                }
+            """.trimIndent()
+
+            try {
+                var alignmentScore = (80..98).random()
+                var analysisText = "I would be thrilled to mentor you on $projectName! My background in $mentorExpertise directly aligns with your goals to ${currentProfile.learningGoals}. Together, we'll design robust interfaces and accelerate your mastery in these modern tech paradigms."
+                var milestonesText = "✅ Milestone 1: Architect a highly modular, decoupled project layout for optimal scalability.\n✅ Milestone 2: Establish end-to-end data pipelines with proper offline error caching.\n✅ Milestone 3: Conduct a comprehensive design sprint to align user flows with Material 3 standards."
+
+                if (GeminiClient.isApiKeyAvailable() && isNetworkOnline.value) {
+                    val response = GeminiClient.generate(prompt, "You are a professional software engineering mentor.")
+                    if (response.isNotBlank()) {
+                        try {
+                            // Extract JSON clean-up
+                            val cleanResponse = response.substringAfter("{").substringBeforeLast("}")
+                            val scoreStr = cleanResponse.substringAfter("\"alignmentScore\":").substringBefore(",").trim()
+                            val analysisStr = cleanResponse.substringAfter("\"analysisText\":").substringBefore("\",").trim().removeSurrounding("\"")
+                            val milestonesStr = cleanResponse.substringAfter("\"milestonesText\":").substringBefore("\"}").trim().removeSurrounding("\"")
+
+                            if (scoreStr.isNotBlank()) {
+                                alignmentScore = scoreStr.toIntOrNull() ?: alignmentScore
+                            }
+                            if (analysisStr.isNotBlank()) {
+                                analysisText = analysisStr.replace("\\n", "\n")
+                            }
+                            if (milestonesStr.isNotBlank()) {
+                                milestonesText = milestonesStr.replace("\\n", "\n")
+                            }
+                        } catch (je: Exception) {
+                            // fallback JSON parsing if format is slightly off
+                            val obj = JSONObject(response)
+                            alignmentScore = obj.optInt("alignmentScore", alignmentScore)
+                            analysisText = obj.optString("analysisText", analysisText)
+                            milestonesText = obj.optString("milestonesText", milestonesText)
+                        }
+                    }
+                }
+
+                val newMatch = MentorMatch(
+                    projectId = projectId,
+                    projectName = projectName,
+                    mentorName = mentorName,
+                    alignmentScore = alignmentScore,
+                    analysisText = analysisText,
+                    milestonesText = milestonesText
+                )
+
+                mentorMatchDao.insertMatch(newMatch)
+                showToast("Successfully matched with Mentor $mentorName! 🎯")
+            } catch (e: Exception) {
+                // Save default backup match
+                val fallbackMatch = MentorMatch(
+                    projectId = projectId,
+                    projectName = projectName,
+                    mentorName = mentorName,
+                    alignmentScore = (82..97).random(),
+                    analysisText = "High-quality alignment detected! As an expert in $mentorExpertise, I will help you align your project $projectName with your core learning style (${currentProfile.learningStyle}) and achieve: ${currentProfile.learningGoals}.",
+                    milestonesText = "✅ Milestone 1: Refactor core services to adopt industry-standard clean design patterns.\n✅ Milestone 2: Implement dynamic Material 3 custom layouts and adaptive widgets.\n✅ Milestone 3: Integrate resilient end-to-end local storage persistence."
+                )
+                mentorMatchDao.insertMatch(fallbackMatch)
+                showToast("Matched via local intelligent mapping!")
+            } finally {
+                _isAILoading.value = false
             }
         }
     }

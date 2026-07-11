@@ -209,10 +209,19 @@ fun ProfileScreen(viewModel: MainViewModel) {
 
         // Premium Subscription Tier Card
         item {
+            val isPremium = profile?.isPremium == true
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isPremium) MaterialTheme.colorScheme.tertiaryContainer 
+                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
+                border = BorderStroke(
+                    1.5.dp, 
+                    if (isPremium) MaterialTheme.colorScheme.tertiary 
+                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                ),
+                modifier = Modifier.fillMaxWidth().testTag("profile_premium_card")
             ) {
                 Row(
                     modifier = Modifier.padding(20.dp),
@@ -221,27 +230,85 @@ fun ProfileScreen(viewModel: MainViewModel) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "NeuroLearn Premium Max",
+                            text = if (isPremium) "👑 NeuroLearn Premium Max" else "🌟 Free Study Account",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = if (isPremium) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Infinite AI Tutor Sessions & Smart PDF Extraction active",
+                            text = if (isPremium) "Unlimited AI Matcher, Code Reviews & Smart PDF parsing" 
+                                   else "Unlock Unlimited matching with Premium Max for $9.99/mo",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                            color = if (isPremium) MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f) 
+                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
+                        
+                        if (!isPremium) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = { viewModel.upgradeToPremium() },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("profile_upgrade_btn")
+                            ) {
+                                Text("Upgrade to Premium Max", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                            }
+                        }
                     }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.tertiary)
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    if (isPremium) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.tertiary)
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "PRO MAX",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = MaterialTheme.colorScheme.onTertiary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // NeuroCoins Balances item
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🪙", fontSize = 28.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "${profile?.coins ?: 0} NeuroCoins",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Earn +15 coins by completing tasks!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    Button(
+                        onClick = { viewModel.addCoinsReward(100) },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("free_refill_btn")
                     ) {
-                        Text(
-                            text = "PRO",
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.ExtraBold),
-                            color = MaterialTheme.colorScheme.onTertiary
-                        )
+                        Text("+100 Free Refill", style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }

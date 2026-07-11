@@ -40,7 +40,9 @@ data class LearnerProfile(
     val selectedTwinAvatar: String = "socratic",
     val role: String = "Learner", // "Learner", "Instructor", "Admin"
     val cardsReviewedCount: Int = 0,
-    val quizzesCompletedCount: Int = 0
+    val quizzesCompletedCount: Int = 0,
+    val isPremium: Boolean = false,
+    val coins: Int = 150
 )
 
 @Entity(tableName = "concept_mastery")
@@ -238,9 +240,10 @@ interface StudyTaskDao {
         PendingSyncAction::class,
         TechStudyRoom::class,
         TechRoomMessage::class,
-        ScratchpadItem::class
+        ScratchpadItem::class,
+        MentorMatch::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -258,6 +261,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun techStudyRoomDao(): TechStudyRoomDao
     abstract fun techRoomMessageDao(): TechRoomMessageDao
     abstract fun scratchpadItemDao(): ScratchpadItemDao
+    abstract fun mentorMatchDao(): MentorMatchDao
 
     companion object {
         @Volatile
@@ -994,4 +998,32 @@ interface ScratchpadItemDao {
     @Query("DELETE FROM scratchpad_items WHERE roomId = :roomId")
     suspend fun deleteItemsForRoom(roomId: String)
 }
+
+@Entity(tableName = "mentor_matches")
+data class MentorMatch(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val projectId: String,
+    val projectName: String,
+    val mentorName: String,
+    val alignmentScore: Int, // 0-100
+    val analysisText: String,
+    val milestonesText: String,
+    val matchedAt: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface MentorMatchDao {
+    @Query("SELECT * FROM mentor_matches WHERE projectId = :projectId ORDER BY matchedAt DESC")
+    fun getMatchesForProject(projectId: String): Flow<List<MentorMatch>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMatch(match: MentorMatch)
+
+    @Query("DELETE FROM mentor_matches WHERE id = :id")
+    suspend fun deleteMatch(id: String)
+
+    @Query("DELETE FROM mentor_matches WHERE projectId = :projectId")
+    suspend fun deleteMatchesForProject(projectId: String)
+}
+
 

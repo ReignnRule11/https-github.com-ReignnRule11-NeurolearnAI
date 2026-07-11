@@ -29,6 +29,7 @@ import com.example.data.ProjectComment
 import com.example.data.TechProject
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
+import kotlinx.coroutines.flow.flowOf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -163,16 +164,23 @@ fun TechHubScreen(viewModel: MainViewModel) {
                 Tab(
                     selected = activeTab == 0,
                     onClick = { activeTab = 0 },
-                    text = { Text("Projects & Proposals", fontWeight = FontWeight.Bold) },
+                    text = { Text("Projects", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
                     icon = { Icon(Icons.Default.FolderSpecial, contentDescription = null) },
                     modifier = Modifier.testTag("tech_hub_tab_projects")
                 )
                 Tab(
                     selected = activeTab == 1,
                     onClick = { activeTab = 1 },
-                    text = { Text("Virtual Rooms", fontWeight = FontWeight.Bold) },
+                    text = { Text("Rooms", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
                     icon = { Icon(Icons.Default.Groups, contentDescription = null) },
                     modifier = Modifier.testTag("tech_hub_tab_rooms")
+                )
+                Tab(
+                    selected = activeTab == 2,
+                    onClick = { activeTab = 2 },
+                    text = { Text("Mentor Match", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.WorkspacePremium, contentDescription = null) },
+                    modifier = Modifier.testTag("tech_hub_tab_mentors")
                 )
             }
 
@@ -267,7 +275,7 @@ fun TechHubScreen(viewModel: MainViewModel) {
                         }
                     }
                 }
-            } else {
+            } else if (activeTab == 1) {
                 // --- STUDY ROOMS TAB VIEW ---
                 Column(
                     modifier = Modifier
@@ -445,6 +453,9 @@ fun TechHubScreen(viewModel: MainViewModel) {
                         }
                     }
                 }
+            } else {
+                // --- MENTOR MATCH TAB VIEW ---
+                MentorMatchView(viewModel = viewModel)
             }
 
             // Host custom study room dialog
@@ -1185,3 +1196,727 @@ fun StatusBadge(status: String) {
         )
     }
 }
+
+@Composable
+fun MentorMatchView(viewModel: MainViewModel) {
+    val profile by viewModel.profile.collectAsState()
+    val projects by viewModel.techProjects.collectAsState()
+    val isAILoading by viewModel.isAILoading.collectAsState()
+
+    var selectedProject by remember { mutableStateOf<TechProject?>(null) }
+    var expandedDropdown by remember { mutableStateOf(false) }
+
+    // Curated Mentor list
+    val mentors = remember {
+        listOf(
+            MentorData("Dr. Evelyn Vance", "Software Architecture & AI Integrations", "Ex-Principal Scientist with 15+ years architecting high-reliability systems and neural models.", "⭐ 4.9 (120+ mentored)", "$85/hr", 40),
+            MentorData("Kofi Mensah", "Web3, Blockchain & Smart Contracts", "Founder of DecentralDev. Active core contributor to modular blockchain frameworks and Solidity contracts.", "⭐ 4.8 (85+ mentored)", "$95/hr", 40),
+            MentorData("Priya Patel", "Product Design, UI/UX & Agile Delivery", "Lead UX Researcher and Design System Lead. Believes that elegant interfaces drive customer success.", "⭐ 4.9 (150+ mentored)", "$75/hr", 40),
+            MentorData("Marcus Stone", "E-commerce Strategy, Business Analysis & SEO", "Growth hacker and digital marketplace pioneer. Scaled multiple startups from zero to $10M+ ARR.", "⭐ 4.7 (95+ mentored)", "$80/hr", 40)
+        )
+    }
+    var selectedMentorIndex by remember { mutableStateOf(0) }
+    var showStorefrontDialog by remember { mutableStateOf(false) }
+
+    // Sync selectedProject when projects list is populated
+    LaunchedEffect(projects) {
+        if (selectedProject == null && projects.isNotEmpty()) {
+            selectedProject = projects.first()
+        }
+    }
+
+    val activeMatchFlow = remember(selectedProject) {
+        selectedProject?.let { viewModel.getMentorMatches(it.id) } ?: flowOf(emptyList())
+    }
+    val activeMatches by activeMatchFlow.collectAsState(initial = emptyList())
+    val activeMatch = activeMatches.firstOrNull()
+
+    // Interactive Checkboxes for Milestones
+    var milestone1Checked by remember { mutableStateOf(false) }
+    var milestone2Checked by remember { mutableStateOf(false) }
+    var milestone3Checked by remember { mutableStateOf(false) }
+
+    // Reset checkboxes when match changes
+    LaunchedEffect(activeMatch) {
+        milestone1Checked = false
+        milestone2Checked = false
+        milestone3Checked = false
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 80.dp)
+    ) {
+        // --- 1. Account Monetization Dashboard ---
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                modifier = Modifier.fillMaxWidth().testTag("monetization_panel")
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.WorkspacePremium,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Monetization Dashboard",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black)
+                            )
+                        }
+
+                        // Premium subscription tag
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (profile?.isPremium == true) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (profile?.isPremium == true) "PREMIUM MAX" else "FREE TIER",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (profile?.isPremium == true) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column {
+                            Text(
+                                text = "Your Study Balance",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "🪙 ${profile?.coins ?: 0} NeuroCoins",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Button(
+                            onClick = { showStorefrontDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("open_store_btn")
+                        ) {
+                            Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Token Shop", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    if (profile?.isPremium != true) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = "👑 UNLOCK UNLIMITED AI MATCHING & AUDITS",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Get infinite expert pairings, live code reviews, and priority access.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = { viewModel.upgradeToPremium() },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().testTag("upgrade_premium_btn")
+                            ) {
+                                Text("Upgrade to Premium Max ($9.99/mo)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 2. Project Selection ---
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "1. Select Project for Mentorship",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+
+                if (projects.isEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "No Active Projects Found",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Propose a tech project first in the 'Projects' tab to match with expert mentors.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { expandedDropdown = true }
+                                .testTag("select_project_dropdown")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = selectedProject?.title ?: "Select a project",
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                    Text(
+                                        text = "Tech Stack: ${selectedProject?.techStack ?: "None"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = expandedDropdown,
+                            onDismissRequest = { expandedDropdown = false },
+                            modifier = Modifier.fillMaxWidth(0.9f)
+                        ) {
+                            projects.forEach { project ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(project.title, fontWeight = FontWeight.Bold)
+                                            Text(project.techStack, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedProject = project
+                                        expandedDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 3. Expert Mentors Roster ---
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "2. Select Expert Mentor",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    mentors.forEachIndexed { index, mentor ->
+                        val isSelected = selectedMentorIndex == index
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(
+                                1.5.dp,
+                                if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedMentorIndex = index }
+                                .testTag("mentor_card_$index")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = when (index) {
+                                            0 -> Icons.Default.Psychology
+                                            1 -> Icons.Default.Hub
+                                            2 -> Icons.Default.Brush
+                                            else -> Icons.Default.TrendingUp
+                                        },
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = mentor.name.substringAfter(" "),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = mentor.rating.substringBefore(" "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Selected Mentor Details Card
+                val activeMentor = mentors[selectedMentorIndex]
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = activeMentor.name,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    text = activeMentor.expertise,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = activeMentor.rating,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    text = activeMentor.rate,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = activeMentor.bio,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- 4. Matching Action Button ---
+        item {
+            val isPremium = profile?.isPremium == true
+            val cost = if (isPremium) 0 else 40
+            val isButtonEnabled = selectedProject != null && !isAILoading
+
+            Button(
+                onClick = {
+                    selectedProject?.let { proj ->
+                        val mentor = mentors[selectedMentorIndex]
+                        viewModel.generateMentorMatch(proj.id, proj.title, mentor.name, mentor.expertise)
+                    }
+                },
+                enabled = isButtonEnabled,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("mentor_match_action_btn"),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                if (isAILoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Icon(Icons.Default.FlashOn, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isPremium) "Request Free Premium Match" else "Request Match (Costs 🪙 $cost Coins)",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // --- 5. Active Match Details (Persistent Database Records) ---
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "3. Mentorship Assessment Plan",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+
+                if (activeMatch == null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Analytics, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(40.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No Match Assessment Yet",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Select a project & mentor above, then click Match to construct a personalized syllabus.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("active_match_card")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Circular alignment score metric
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${activeMatch.alignmentScore}%",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Matched Mentor: ${activeMatch.mentorName}",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                    Text(
+                                        text = "Goal Alignment Match Score",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "Personalized Alignment Analysis",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = activeMatch.analysisText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "Suggested Interactive Milestones",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Display interactive milestones
+                            val milestonesList = activeMatch.milestonesText.lines().filter { it.isNotBlank() }
+                            milestonesList.forEachIndexed { mIndex, milestone ->
+                                val cleanedMilestone = milestone.replace("✅", "").trim()
+                                val isChecked = when (mIndex) {
+                                    0 -> milestone1Checked
+                                    1 -> milestone2Checked
+                                    else -> milestone3Checked
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = {
+                                            when (mIndex) {
+                                                0 -> milestone1Checked = it
+                                                1 -> milestone2Checked = it
+                                                else -> milestone3Checked = it
+                                            }
+                                        },
+                                        modifier = Modifier.testTag("milestone_checkbox_$mIndex")
+                                    )
+                                    Text(
+                                        text = cleanedMilestone,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isChecked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Live Launch Room Consultation Action
+                            Button(
+                                onClick = {
+                                    viewModel.createTechStudyRoom(
+                                        name = "${activeMatch.mentorName} Office Hour 🎓",
+                                        projectId = activeMatch.projectId,
+                                        projectName = activeMatch.projectName
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().testTag("launch_mentor_room_btn")
+                            ) {
+                                Icon(Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Launch Live Workspace with ${activeMatch.mentorName}")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --- 6. Storefront / Token Shop Dialog ---
+    if (showStorefrontDialog) {
+        Dialog(onDismissRequest = { showStorefrontDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("storefront_dialog")
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "NeuroCoins Token Shop 🪙",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        IconButton(onClick = { showStorefrontDialog = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close Shop")
+                        }
+                    }
+
+                    Text(
+                        text = "Need more matching credits or instant code audits? Replenish your tokens instantly or get a subscription below:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    HorizontalDivider()
+
+                    // Pack 1
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.purchaseCoins(100, 199)
+                                showStorefrontDialog = false
+                            }
+                            .testTag("buy_pack_starter")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🪙", fontSize = 28.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Starter Scholar Pack", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Get 100 NeuroCoins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.purchaseCoins(100, 199)
+                                    showStorefrontDialog = false
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text("$1.99")
+                            }
+                        }
+                    }
+
+                    // Pack 2
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.purchaseCoins(300, 499)
+                                showStorefrontDialog = false
+                            }
+                            .testTag("buy_pack_growth")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🏺", fontSize = 28.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Growth Accelerator Pack", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Get 300 NeuroCoins (+50 Bonus!)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.purchaseCoins(350, 499)
+                                    showStorefrontDialog = false
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text("$4.99")
+                            }
+                        }
+                    }
+
+                    // Subscription option
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.tertiary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.upgradeToPremium()
+                                showStorefrontDialog = false
+                            }
+                            .testTag("buy_pack_premium")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("👑", fontSize = 28.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Premium Max Monthly Pass", fontWeight = FontWeight.Black, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                Text("Infinite matches, audits & downloads", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f))
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.upgradeToPremium()
+                                    showStorefrontDialog = false
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                            ) {
+                                Text("$9.99")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class MentorData(
+    val name: String,
+    val expertise: String,
+    val bio: String,
+    val rating: String,
+    val rate: String,
+    val initialCoins: Int
+)
