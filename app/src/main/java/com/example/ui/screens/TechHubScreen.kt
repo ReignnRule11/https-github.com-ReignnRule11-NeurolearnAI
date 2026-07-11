@@ -7,9 +7,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.example.data.TalentProfile
+import com.example.data.TalentEngagement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -205,6 +210,20 @@ fun TechHubScreen(viewModel: MainViewModel) {
                     text = { Text("Board", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
                     icon = { Icon(Icons.Default.Assignment, contentDescription = null) },
                     modifier = Modifier.testTag("tech_hub_tab_project_board")
+                )
+                Tab(
+                    selected = activeTab == 6,
+                    onClick = { activeTab = 6 },
+                    text = { Text("Talent Pool", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.Work, contentDescription = null) },
+                    modifier = Modifier.testTag("tech_hub_tab_talent_pool")
+                )
+                Tab(
+                    selected = activeTab == 7,
+                    onClick = { activeTab = 7 },
+                    text = { Text("AI Tutor", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                    modifier = Modifier.testTag("tech_hub_tab_ai_tutor")
                 )
             }
 
@@ -486,9 +505,15 @@ fun TechHubScreen(viewModel: MainViewModel) {
             } else if (activeTab == 4) {
                 // --- BLOCKCHAIN VERIFIABLE CERTIFICATE LEDGER ---
                 BlockchainCertificatesView(viewModel = viewModel)
-            } else {
+            } else if (activeTab == 5) {
                 // --- PROJECT COLLABORATION & PROGRESS MANAGEMENT BOARD ---
                 ProjectManagementBoardView(viewModel = viewModel)
+            } else if (activeTab == 6) {
+                // --- GLOBAL TALENT HUB & EMPLOYER ENGAGEMENTS ---
+                TalentMarketplaceView(viewModel = viewModel)
+            } else {
+                // --- AI TUTOR, MENTOR & BUG FIXER CONSOLE ---
+                AITutorFixerView(viewModel = viewModel)
             }
 
             // Host custom study room dialog
@@ -2031,22 +2056,61 @@ fun AcademicRepositoryView(viewModel: MainViewModel) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Category Filter Tabs
+        var showUnpaidLibraries by remember { mutableStateOf(false) }
+
+        // Switcher between Peer Publications and Global Unpaid Libraries
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            categories.forEach { category ->
-                FilterChip(
-                    selected = selectedCategory == category,
-                    onClick = { selectedCategory = category },
-                    label = { Text(category, fontSize = 11.sp) },
-                    shape = RoundedCornerShape(20.dp)
-                )
+            Button(
+                onClick = { showUnpaidLibraries = false },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (!showUnpaidLibraries) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f).testTag("academic_tab_peer")
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(imageVector = Icons.Default.Groups, contentDescription = null, tint = if (!showUnpaidLibraries) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                    Text("Peer Papers", fontWeight = FontWeight.Bold, color = if (!showUnpaidLibraries) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
+            }
+
+            Button(
+                onClick = { showUnpaidLibraries = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (showUnpaidLibraries) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f).testTag("academic_tab_unpaid_libraries")
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(imageVector = Icons.Default.Public, contentDescription = null, tint = if (showUnpaidLibraries) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                    Text("World Libraries", fontWeight = FontWeight.Bold, color = if (showUnpaidLibraries) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+
+        if (!showUnpaidLibraries) {
+            // Category Filter Tabs
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                categories.forEach { category ->
+                    FilterChip(
+                        selected = selectedCategory == category,
+                        onClick = { selectedCategory = category },
+                        label = { Text(category, fontSize = 11.sp) },
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
         if (filteredPapers.isEmpty()) {
             Box(
@@ -2172,6 +2236,9 @@ fun AcademicRepositoryView(viewModel: MainViewModel) {
                     }
                 }
             }
+        }
+        } else {
+            UnpaidLibrariesView(viewModel = viewModel)
         }
     }
 
@@ -3356,6 +3423,1725 @@ fun ProjectManagementBoardView(viewModel: MainViewModel) {
                             .testTag("submit_board_task_btn")
                     ) {
                         Text("Create Collaborative Task", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TalentMarketplaceView(viewModel: MainViewModel) {
+    val talents by viewModel.talentPool.collectAsState()
+    val engagements by viewModel.talentEngagements.collectAsState()
+    val certificates by viewModel.allCertificates.collectAsState()
+    val profileState by viewModel.profile.collectAsState()
+
+    var showEmployerTab by remember { mutableStateOf(true) } // true: Browse Pool, false: Manage My Profile / Offers
+    var searchQuery by remember { mutableStateOf("") }
+    var workFilter by remember { mutableStateOf("All") } // "All", "Remote", "Hybrid", "Onsite"
+
+    // Dialog state for Engagement
+    var activeEngagementTalent by remember { mutableStateOf<TalentProfile?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Talent Hub Hero Banner
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Public,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
+                    Text(
+                        text = "Global Talent & Recruiter Hub",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "A borderless, decentralized sandbox talent directory. Duly certified learners with verifiable blockchain credentials can display their portfolios and accept direct remote, hybrid, or onsite engagements from global syndicates.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                )
+            }
+        }
+
+        // Segmented Switcher Controls
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { showEmployerTab = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (showEmployerTab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("talent_hub_tab_browse_pool")
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Group,
+                        contentDescription = null,
+                        tint = if (showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Browse Talents",
+                        fontWeight = FontWeight.Bold,
+                        color = if (showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Button(
+                onClick = { showEmployerTab = false },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (!showEmployerTab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("talent_hub_tab_my_profile")
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = if (!showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    val activeOfferCount = engagements.count { it.status == "Pending" }
+                    Text(
+                        text = if (activeOfferCount > 0) "My Profile ($activeOfferCount)" else "My Profile",
+                        fontWeight = FontWeight.Bold,
+                        color = if (!showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
+        if (showEmployerTab) {
+            // --- BROWSE TALENT POOL ---
+            // Search and Filter Bar
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search skill, title, keyword (e.g. Kotlin)...") },
+                    leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("talent_pool_search")
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Work Preference:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    val filters = listOf("All", "Remote", "Hybrid", "Onsite")
+                    filters.forEach { filter ->
+                        val isSelected = workFilter == filter
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { workFilter = filter },
+                            label = { Text(filter, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("filter_chip_$filter")
+                        )
+                    }
+                }
+            }
+
+            // Filtered talents
+            val filteredTalents = talents.filter { talent ->
+                val matchesSearch = searchQuery.isBlank() ||
+                        talent.name.contains(searchQuery, ignoreCase = true) ||
+                        talent.title.contains(searchQuery, ignoreCase = true) ||
+                        talent.skills.contains(searchQuery, ignoreCase = true) ||
+                        talent.bio.contains(searchQuery, ignoreCase = true)
+
+                val matchesPreference = workFilter == "All" || talent.workPreference == workFilter
+
+                matchesSearch && matchesPreference
+            }
+
+            if (filteredTalents.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Group,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "No certified talents match your criteria.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(filteredTalents) { talent ->
+                        Card(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("talent_card_${talent.id}")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        // Avatar
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = talent.name.take(1).uppercase(),
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+
+                                        Column {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = talent.name,
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                if (talent.isCertified) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Verified,
+                                                        contentDescription = "Verified Certificate Issuer",
+                                                        tint = Color(0xFF4CAF50),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = talent.title,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+
+                                    // Hourly rate pill
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = talent.hourlyRate,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Certified Badge Line
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.WorkspacePremium,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = talent.certificationTitle,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black),
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Bio Text
+                                Text(
+                                    text = talent.bio,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Location & Preference Row
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Icon(
+                                            imageVector = Icons.Default.LocationOn,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = talent.location,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = when (talent.workPreference) {
+                                            "Remote" -> Color(0xFFE3F2FD)
+                                            "Hybrid" -> Color(0xFFFFF3E0)
+                                            else -> Color(0xFFE8F5E9)
+                                        },
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = talent.workPreference.uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            ),
+                                            color = when (talent.workPreference) {
+                                                "Remote" -> Color(0xFF1565C0)
+                                                "Hybrid" -> Color(0xFFE65100)
+                                                else -> Color(0xFF2E7D32)
+                                            },
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Skills flow listing
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    val skillList = talent.skills.split(",").map { it.trim() }.take(4)
+                                    skillList.forEach { skill ->
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                            shape = RoundedCornerShape(4.dp),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        ) {
+                                            Text(
+                                                text = skill,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Active Employer Action Block
+                                Button(
+                                    onClick = { activeEngagementTalent = talent },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("engage_talent_btn_${talent.id}")
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Send,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            "Spotted: Send Direct Contract Offer",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // --- MANAGE MY TALENT PROFILE & RECEIVED OFFERS ---
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(bottom = 100.dp)
+            ) {
+                // Warning if not certified
+                if (certificates.isEmpty()) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Column {
+                                    Text(
+                                        text = "Blockchain Credentials Notice ⚠️",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Text(
+                                        text = "You haven't minted any blockchain certs on NeuroLearn yet. Mint a credential under the 'Certificates' tab to qualify for standard global verification checks. (Sandbox mode: you can still list yourself below!)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Profile form or listing
+                val userTalent = talents.firstOrNull { it.isUserProfile }
+                item {
+                    if (userTalent != null) {
+                        // User is registered. Display their active listing + Edit buttons
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "🟢 Your Active Talent Listing",
+                                            fontWeight = FontWeight.Black,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "Visible globally to partners & recruiters.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.removeUserTalentProfile() },
+                                        modifier = Modifier.testTag("remove_my_listing_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Remove listing",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text(
+                                    text = userTalent.name,
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = userTalent.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "💼 Rate: ${userTalent.hourlyRate}  |  🌍 Preference: ${userTalent.workPreference} (${userTalent.location})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text(
+                                    text = userTalent.bio,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text(
+                                    text = "Skills: ${userTalent.skills}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    } else {
+                        // Let the user register
+                        var userTitle by remember { mutableStateOf("") }
+                        var userSkills by remember { mutableStateOf("") }
+                        var userBio by remember { mutableStateOf("") }
+                        var userLoc by remember { mutableStateOf("") }
+                        var userPreference by remember { mutableStateOf("Remote") }
+                        var userRate by remember { mutableStateOf("$50/hr") }
+
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "🚀 Join the Global Talent Directory",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black)
+                                )
+                                Text(
+                                    text = "Publish your certified credentials to our open partner market so international syndicates and NGOs can spot and contact you directly.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                OutlinedTextField(
+                                    value = userTitle,
+                                    onValueChange = { userTitle = it },
+                                    label = { Text("Target Role / Title") },
+                                    placeholder = { Text("e.g. Kotlin Android Engineer") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("talent_setup_title")
+                                )
+
+                                OutlinedTextField(
+                                    value = userSkills,
+                                    onValueChange = { userSkills = it },
+                                    label = { Text("Technical Skills") },
+                                    placeholder = { Text("e.g. Jetpack Compose, Solidity, AI Agents") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("talent_setup_skills")
+                                )
+
+                                OutlinedTextField(
+                                    value = userBio,
+                                    onValueChange = { userBio = it },
+                                    label = { Text("Short Professional Bio") },
+                                    placeholder = { Text("Describe your expertise and what projects you are looking for.") },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("talent_setup_bio")
+                                )
+
+                                OutlinedTextField(
+                                    value = userLoc,
+                                    onValueChange = { userLoc = it },
+                                    label = { Text("Your Location") },
+                                    placeholder = { Text("e.g. Nairobi, Kenya") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("talent_setup_location")
+                                )
+
+                                // Preference and Rate
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = userRate,
+                                        onValueChange = { userRate = it },
+                                        label = { Text("Target Hourly Rate") },
+                                        placeholder = { Text("e.g. $40/hr") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("talent_setup_rate")
+                                    )
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("Work Preference", style = MaterialTheme.typography.labelSmall)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            listOf("Remote", "Hybrid", "Onsite").forEach { pref ->
+                                                val isSel = userPreference == pref
+                                                Surface(
+                                                    onClick = { userPreference = pref },
+                                                    color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    modifier = Modifier.testTag("user_pref_$pref")
+                                                ) {
+                                                    Text(
+                                                        text = pref,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Button(
+                                    onClick = {
+                                        if (userTitle.isNotBlank() && userSkills.isNotBlank() && userLoc.isNotBlank()) {
+                                            viewModel.registerOrUpdateUserTalentProfile(
+                                                title = userTitle,
+                                                skills = userSkills,
+                                                bio = userBio.ifBlank { "Certified Lifelong Tech student" },
+                                                location = userLoc,
+                                                workPreference = userPreference,
+                                                hourlyRate = userRate
+                                            )
+                                        } else {
+                                            viewModel.showToast("Title, Skills, and Location cannot be empty.")
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("submit_talent_listing_btn")
+                                ) {
+                                    Text("Publish Profile Live to Directory", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Received Offers / Engagement Inbox
+                val userInbox = engagements.filter { it.talentId == "user_talent_profile" || userTalent != null && it.talentId == userTalent.id }
+
+                item {
+                    Text(
+                        text = "📥 RECRUITER ENGAGEMENT INBOX (${userInbox.size})",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.2.sp
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
+
+                if (userInbox.isEmpty()) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MailOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Your inbox is empty.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "When an employer spots your certified listing, direct contract offers will populate here.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(userInbox) { offer ->
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = when (offer.status) {
+                                    "Accepted" -> Color(0xFFE8F5E9)
+                                    "Declined" -> Color(0xFFFFEBEE)
+                                    else -> MaterialTheme.colorScheme.surface
+                                }
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("inbox_offer_${offer.id}")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = offer.jobTitle,
+                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "from: ${offer.employerName} (${offer.contactEmail})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = when (offer.status) {
+                                            "Accepted" -> Color(0xFF2E7D32)
+                                            "Declined" -> Color(0xFFC62828)
+                                            else -> Color(0xFF1565C0)
+                                        },
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = offer.status.uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Icon(imageVector = Icons.Default.Business, contentDescription = null, modifier = Modifier.size(12.dp))
+                                        Text(offer.workType, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Icon(imageVector = Icons.Default.AttachMoney, contentDescription = null, modifier = Modifier.size(12.dp))
+                                        Text(offer.salaryOffer, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text(
+                                    text = offer.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                if (offer.status == "Pending") {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { viewModel.updateTalentEngagementStatus(offer.id, "Accepted") },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("accept_offer_btn_${offer.id}")
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Text("Accept Offer", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
+
+                                        Button(
+                                            onClick = { viewModel.updateTalentEngagementStatus(offer.id, "Declined") },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("decline_offer_btn_${offer.id}")
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Icon(imageVector = Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Text("Decline", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Accepted/Declined offers can be cleaned up
+                                    Button(
+                                        onClick = { viewModel.deleteTalentEngagement(offer.id) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("delete_offer_btn_${offer.id}")
+                                    ) {
+                                        Text(
+                                            text = "Archive Log",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Engagement Offer Dialog
+    val currentEngagingTalent = activeEngagementTalent
+    if (currentEngagingTalent != null) {
+        var employerName by remember { mutableStateOf("") }
+        var jobTitle by remember { mutableStateOf("") }
+        var workType by remember { mutableStateOf("Remote") }
+        var salaryOffer by remember { mutableStateOf("") }
+        var messageText by remember { mutableStateOf("") }
+        var contactEmail by remember { mutableStateOf("") }
+
+        Dialog(onDismissRequest = { activeEngagementTalent = null }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("engage_talent_dialog")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(18.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Send Direct Job Offer 🚀",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        IconButton(onClick = { activeEngagementTalent = null }) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+
+                    Text(
+                        text = "Engage ${currentEngagingTalent.name} directly. Enter your company context, salary, and specific project goals.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = employerName,
+                        onValueChange = { employerName = it },
+                        label = { Text("Recruiter / Company Name") },
+                        placeholder = { Text("e.g. Coinbase Incubator") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("engage_input_employer")
+                    )
+
+                    OutlinedTextField(
+                        value = jobTitle,
+                        onValueChange = { jobTitle = it },
+                        label = { Text("Role Title") },
+                        placeholder = { Text("e.g. Android Lead") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("engage_input_title")
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = salaryOffer,
+                            onValueChange = { salaryOffer = it },
+                            label = { Text("Salary / Rate Offer") },
+                            placeholder = { Text("e.g. $90/hr or $120k/yr") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("engage_input_salary")
+                        )
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Work Type", style = MaterialTheme.typography.labelSmall)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("Remote", "Hybrid", "Onsite").forEach { type ->
+                                    val isSel = workType == type
+                                    Surface(
+                                        onClick = { workType = type },
+                                        color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.testTag("engage_worktype_$type")
+                                    ) {
+                                        Text(
+                                            text = type,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = contactEmail,
+                        onValueChange = { contactEmail = it },
+                        label = { Text("Your Contact Email") },
+                        placeholder = { Text("recruiter@company.com") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("engage_input_email")
+                    )
+
+                    OutlinedTextField(
+                        value = messageText,
+                        onValueChange = { messageText = it },
+                        label = { Text("Invitation Message") },
+                        placeholder = { Text("Describe requirements, project scope, and next steps.") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("engage_input_message")
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Button(
+                        onClick = {
+                            if (employerName.isNotBlank() && jobTitle.isNotBlank() && contactEmail.isNotBlank()) {
+                                viewModel.submitTalentEngagement(
+                                    talentId = currentEngagingTalent.id,
+                                    talentName = currentEngagingTalent.name,
+                                    employerName = employerName,
+                                    jobTitle = jobTitle,
+                                    workType = workType,
+                                    salaryOffer = salaryOffer.ifBlank { "TBD" },
+                                    message = messageText.ifBlank { "Hi ${currentEngagingTalent.name}, we spotted your certified credentials on NeuroLearn AI and would love to chat!" },
+                                    contactEmail = contactEmail
+                                )
+                                activeEngagementTalent = null
+                            } else {
+                                viewModel.showToast("Company Name, Role Title, and Email cannot be empty.")
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("submit_engagement_offer_btn")
+                    ) {
+                        Text("Send Strategic Offer", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AITutorFixerView(viewModel: MainViewModel) {
+    val projects by viewModel.techProjects.collectAsState()
+    val isAILoading by viewModel.isAILoading.collectAsState()
+    val aiTutorResponse by viewModel.aiTutorResponse.collectAsState()
+    val profile by viewModel.profile.collectAsState()
+
+    var selectedProject by remember { mutableStateOf<TechProject?>(null) }
+    var expandedProjectDropdown by remember { mutableStateOf(false) }
+
+    var selectedPersona by remember { mutableStateOf("Mentor") } // "Mentor", "BugFixer", "Tutor"
+    var userQuery by remember { mutableStateOf("") }
+    var codeSnippet by remember { mutableStateOf("") }
+
+    // Sync selectedProject when projects list is populated
+    LaunchedEffect(projects) {
+        if (selectedProject == null && projects.isNotEmpty()) {
+            selectedProject = projects.first()
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 80.dp)
+    ) {
+        // Hero Header
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "AI Project Tutor, Mentor & Bug Fixer",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Continuous Socratic tutoring, architectural feedback, and source-level bug fixing for your personal innovative projects and collaborative spaces.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                    )
+                }
+            }
+        }
+
+        // Project selection and persona setup
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "1. Select Project to Analyze",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+
+                if (projects.isEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "No Projects Registered",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Propose a collaborative or personal project in the 'Projects' tab to unlock instant AI mentoring.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { expandedProjectDropdown = true }
+                                .testTag("tutor_project_dropdown")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = selectedProject?.title ?: "Select a project",
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                    Text(
+                                        text = "Tech Stack: ${selectedProject?.techStack ?: "Not specified"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = expandedProjectDropdown,
+                            onDismissRequest = { expandedProjectDropdown = false },
+                            modifier = Modifier.fillMaxWidth(0.9f)
+                        ) {
+                            projects.forEach { project ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(project.title, fontWeight = FontWeight.Bold)
+                                            Text("Stack: ${project.techStack}", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedProject = project
+                                        expandedProjectDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Persona Choice Row
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "2. Select AI Assistant Persona",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val personas = listOf(
+                        Triple("Mentor", "Principal Architect", Icons.Default.WorkspacePremium),
+                        Triple("BugFixer", "Code Bug Fixer", Icons.Default.BugReport),
+                        Triple("Tutor", "Socratic Tutor", Icons.Default.School)
+                    )
+
+                    personas.forEach { (id, name, icon) ->
+                        val isSelected = selectedPersona == id
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedPersona = id }
+                                .testTag("persona_chip_$id")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Input forms
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "3. Consultation Parameters",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+
+                OutlinedTextField(
+                    value = userQuery,
+                    onValueChange = { userQuery = it },
+                    label = { Text("What is your architectural question, topic, or error?") },
+                    placeholder = {
+                        when (selectedPersona) {
+                            "BugFixer" -> Text("Describe what isn't working as expected...")
+                            "Tutor" -> Text("Ask about a language feature, design pattern, or algorithm...")
+                            else -> Text("Ask about database strategies, API design, security, or folders structure...")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("ai_tutor_query_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (selectedPersona == "BugFixer" || selectedPersona == "Mentor") {
+                    OutlinedTextField(
+                        value = codeSnippet,
+                        onValueChange = { codeSnippet = it },
+                        label = { Text("Source Code / Stack Trace / Compiler Output (Optional)") },
+                        placeholder = { Text("Paste your code block or error log here...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .testTag("ai_tutor_code_input"),
+                        shape = RoundedCornerShape(12.dp),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Button(
+                    onClick = {
+                        val proj = selectedProject
+                        if (proj != null) {
+                            viewModel.getAITutorMentorAdvice(
+                                projectId = proj.id,
+                                projectTitle = proj.title,
+                                techStack = proj.techStack,
+                                persona = selectedPersona,
+                                userInput = userQuery,
+                                codeSnippet = codeSnippet
+                            )
+                        } else {
+                            viewModel.showToast("Please select or propose a project first!")
+                        }
+                    },
+                    enabled = !isAILoading && userQuery.isNotBlank() && selectedProject != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("ai_tutor_synthesize_btn"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isAILoading) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    } else {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Consult AI ${selectedPersona}", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Response section
+        if (aiTutorResponse != null) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("💡", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "AI ${selectedPersona} Response",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            IconButton(onClick = { viewModel.clearAITutorResponse() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear response", modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Render response text supporting pre-styled backticks for code blocks
+                        val responseText = aiTutorResponse ?: ""
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val blocks = responseText.split("```")
+                            blocks.forEachIndexed { index, block ->
+                                if (index % 2 == 1) {
+                                    // Code Block
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = block.trim(),
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            modifier = Modifier.padding(12.dp)
+                                        )
+                                    }
+                                } else {
+                                    // Regular text
+                                    Text(
+                                        text = block.trim(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Publish AI analysis to project workspace
+                        Button(
+                            onClick = {
+                                val proj = selectedProject
+                                val text = aiTutorResponse
+                                if (proj != null && text != null) {
+                                    val logMsg = "🤖 AI ${selectedPersona} ANALYSIS:\n\n$text"
+                                    viewModel.addProjectComment(proj.id, logMsg)
+                                    viewModel.showToast("Analysis posted to Project Feed! +10 XP")
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("ai_tutor_publish_feed_btn"),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Post Analysis to Project Feed", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UnpaidLibrariesView(viewModel: MainViewModel) {
+    val isAILoading by viewModel.isAILoading.collectAsState()
+    val aiLibrarianResponse by viewModel.aiLibrarianResponse.collectAsState()
+    val profile by viewModel.profile.collectAsState()
+
+    var selectedLibrary by remember { mutableStateOf("arXiv Open Science Archive") }
+    var researchTopic by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("Artificial Intelligence") }
+    var showSynthesisDialog by remember { mutableStateOf(false) }
+
+    val libraries = remember {
+        listOf(
+            Triple("arXiv Open Science Archive", "STEM preprints, mathematics proofs & neural systems", Icons.Default.Science),
+            Triple("MIT OpenCourseWare", "Undergrad/Grad curriculum blueprints & course notes", Icons.Default.School),
+            Triple("Project Gutenberg", "Classic scientific literature, philosophy & logical works", Icons.Default.MenuBook),
+            Triple("PubMed Central (PMC)", "Computational neuroscience, medicine, and bio-informatics", Icons.Default.Analytics),
+            Triple("W3C & IETF Protocol Specs", "Decentralized consensus rules, RFCs, & Web3 schemas", Icons.Default.SettingsEthernet),
+            Triple("Internet Archive Open Library", "Universal books, culture history, & historical papers", Icons.Default.Public)
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Explanatory note
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("💡", fontSize = 18.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Continuous, universal, unpaid learning globally is a human right. Search the world's most trusted open collections and let the AI Literature Synthesizer create tailored textbook chapters & quizzes instantly.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Text(
+            text = "1. Select Open-Access Global Library",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+        )
+
+        // Horizontal Row of Open Collections
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 4.dp)
+        ) {
+            items(libraries) { (name, desc, icon) ->
+                val isSelected = selectedLibrary == name
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .width(220.dp)
+                        .clickable { selectedLibrary = name }
+                        .testTag("lib_card_${name.take(5)}")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(14.dp)
+                            .height(100.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "100% UNPAID & FREE",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Form setup
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = "2. Focus Topic & Synthesis Method",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+            )
+
+            OutlinedTextField(
+                value = researchTopic,
+                onValueChange = { researchTopic = it },
+                label = { Text("What scientific topic or concept do you wish to study?") },
+                placeholder = { Text("e.g. zk-STARKs performance benchmarks, Epistemological dialogues...") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("research_topic_input"),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Text(
+                text = "Select Category",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val cats = listOf("Artificial Intelligence", "Web3 & Blockchain", "Open Science")
+                cats.forEach { cat ->
+                    val isSelected = selectedCategory == cat
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedCategory = cat },
+                        label = { Text(cat, fontSize = 11.sp) },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.testTag("lib_cat_$cat")
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Button(
+                onClick = {
+                    viewModel.getAISynthesizedLibraryBrief(
+                        libraryName = selectedLibrary,
+                        topic = researchTopic,
+                        category = selectedCategory
+                    )
+                    showSynthesisDialog = true
+                },
+                enabled = !isAILoading && researchTopic.isNotBlank(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("lib_synthesize_btn"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                if (isAILoading) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
+                } else {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Consult AI Librarian", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(80.dp))
+    }
+
+    // Synthesis Reading room and publisher dialog
+    if (showSynthesisDialog && aiLibrarianResponse != null) {
+        val briefText = aiLibrarianResponse ?: ""
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showSynthesisDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "📚 Synthesized Scholarly Brief",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Source: $selectedLibrary",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(onClick = { showSynthesisDialog = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close dialog")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val blocks = briefText.split("```")
+                        blocks.forEachIndexed { index, block ->
+                            if (index % 2 == 1) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = block.trim(),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        modifier = Modifier.padding(12.dp)
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = block.trim(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Publish to Global Open Peer Repository
+                    Button(
+                        onClick = {
+                            val abstractSample = if (briefText.length > 250) briefText.substring(0, 250) + "..." else briefText
+                            viewModel.saveSynthesizedBriefToRepository(
+                                title = "AI Synthesized: $researchTopic",
+                                abstractText = abstractSample,
+                                content = briefText,
+                                category = selectedCategory,
+                                authors = "NeuroLearn AI Research Librarian & ${profile?.name?.ifBlank { "Lifelong Learner" } ?: "Lifelong Learner"}"
+                            )
+                            showSynthesisDialog = false
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("lib_publish_to_repo_btn"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Publish to Public Open Access Repository", fontWeight = FontWeight.Bold)
                     }
                 }
             }

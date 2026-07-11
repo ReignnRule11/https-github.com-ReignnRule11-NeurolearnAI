@@ -20,6 +20,20 @@ Located within the **Tech Hub** of NeuroLearn AI, the **Mentor Match** tab provi
 
 ---
 
+## 🤖 AI Project Tutor, Mentor & Bug Fixer
+
+Located inside the **AI Tutor** tab, this panel provides continuous Socratic teaching, architectural feedback, and instant source-level bug fixing directly integrated with the learner's workspace.
+
+### 🧠 How It Works
+1. **Context-Aware Assistance**: The system automatically pulls details of the user's selected tech proposal (e.g., project title, technologies used) to tailor all suggestions specifically to their technical environment.
+2. **Interactive Persona Switching**:
+   - **Ex-Principal Architect (Mentor)**: Synthesizes high-level system design feedback, database structure improvements, directory tree organization, security best-practices, and deployment workflows.
+   - **Elite QA & Bug Fixer**: Inspects syntax fragments, handles memory leak investigation, analyzes stack traces, and suggests code translation across languages.
+   - **Socratic Tech Educator (Tutor)**: Walks users through algorithms, explains computer science principles step-by-step, and provides bite-sized exercises instead of giving away direct answers.
+3. **Collaborative Feed Integration**: A single click allows users to publish the generated AI review straight to the collaborative **Project Board Feed** as an official workspace post, rewarding them with **+10 XP** for keeping teammates aligned.
+
+---
+
 ## 🪙 Comprehensive Monetization Strategy
 
 NeuroLearn AI adopts a balanced, dual-tier monetization loop designed to reward consistent learning while cleanly dividing free usage limits from professional-grade tools.
@@ -48,12 +62,26 @@ NeuroLearn AI adopts a balanced, dual-tier monetization loop designed to reward 
 NeuroLearn AI integrates a state-of-the-art **World Repository for Academic Research and Technical Blueprints**. Learners can acquire advanced technical knowledge while validating their learning milestones directly on-chain.
 
 ### 🧠 How It Works
-1. **Repository Access**: Learners can browse peer-reviewed research papers (e.g., Web3 Consensus, Neural Networks, Edge Computing).
-2. **Knowledge Marketplace**:
+1. **Repository Access**: Learners can browse peer-reviewed research papers (e.g., Web3 Consensus, Neural Networks, Edge Computing) or consult the **Global Unpaid Libraries** switcher.
+2. **Global Unpaid Libraries System**:
+   - Continuous, universal learning globally is a fundamental right. NeuroLearn connects learners directly to the world's most trusted open-access academic and protocol libraries:
+     * **arXiv Open Science Archive**: 16+ Million STEM preprints, advanced mathematical proofs, and neural systems research papers.
+     * **MIT OpenCourseWare**: Complete curriculum blueprints, engineering schemas, and algorithms lectures notes.
+     * **Project Gutenberg**: Historic scientific monographs, philosophy of science classics, and logical systems.
+     * **PubMed Central (PMC)**: 100% free computational neuroscience, bioinformatics, and health informatics.
+     * **W3C & IETF Protocol Specs**: Decentralized internet protocol RFCs, routing standards, and cryptography specifications.
+     * **Internet Archive**: Universal literature, language manuscripts, and historical technology reviews.
+3. **AI Research Librarian Synthesis**:
+   - Select any library and set your specific focus topic.
+   - The AI Librarian processes the collection to generate a tailored **Scholarly Study Brief** containing key textbook definitions, advanced proofs analysis, and Socratic study questions.
+4. **Public Open-Access Publishing**:
+   - If the synthesis is valuable, click **"Publish to Public Open Access Repository"** to save it straight to the local SQLite database.
+   - Once saved, the study brief immediately appears on the decentralized marketplace with a **0-Coin Free Access** tier, allowing other learners globally to study, review, and mine certificates on it!
+5. **Knowledge Marketplace**:
    - Free or open abstracts can be downloaded immediately.
    - Advanced technical papers can be unlocked using **NeuroCoins** (e.g., 30 coins), directly supporting scholarly authors.
    - Premium Max subscribers bypass all coin requirements with unlimited instant access.
-3. **On-Chain Certification (Mining Simulation)**:
+6. **On-Chain Certification (Mining Simulation)**:
    - Upon studying a paper in full, the learner can opt to complete the study.
    - This launches a **Simulated Proof-of-Work (PoW) Mining Miner**.
    - The miner runs a live cryptographic loop on the device's JVM, searching for a SHA-256 hash that begins with `00` (representing network difficulty).
@@ -267,6 +295,18 @@ Every critical component includes `Modifier.testTag` declarations for effortless
 | **Task Card** | `task_card_<id>` | Container displaying individual task details. |
 | **Task Status Toggle** | `task_checkbox_<id>` | Checkbox that registers task completion and awards XP. |
 | **Delete Task Button** | `delete_task_btn_<id>` | Deletes task from active workspace. |
+| **Tab: AI Tutor** | `tech_hub_tab_ai_tutor` | Switches active tab to the AI Tutor/Mentor panel. |
+| **Select Project Dropdown** | `tutor_project_dropdown` | Opens dropdown to select one of your tech proposals. |
+| **Persona Selectors** | `persona_chip_<Mentor/BugFixer/Tutor>` | Selects the AI assistant behavior. |
+| **Query Input Field** | `ai_tutor_query_input` | Text field to enter architectural or code questions. |
+| **Code Snippet Input** | `ai_tutor_code_input` | Text area to paste syntax or stack traces. |
+| **Trigger Consultation** | `ai_tutor_synthesize_btn` | Sends inputs to Gemini API for deep analysis. |
+| **Post Analysis to Feed** | `ai_tutor_publish_feed_btn` | Publishes AI advice to the collaborative Project Board feed. |
+| **Unpaid Libraries Tab Toggle**| `academic_tab_unpaid_libraries` | Switches Academic Repository view to Unpaid Libraries. |
+| **Library Card Selector** | `lib_card_<name_prefix>` | Selects an open global collection (arXiv, MIT, etc.). |
+| **Research Topic Input** | `research_topic_input` | Text field to set specific scientific concept/focus. |
+| **Synthesize Brief Button** | `lib_synthesize_btn` | Triggers the AI literature synthesizer. |
+| **Publish Brief Button** | `lib_publish_to_repo_btn` | Saves synthesized textbooks to the public SQLite repository. |
 
 ---
 

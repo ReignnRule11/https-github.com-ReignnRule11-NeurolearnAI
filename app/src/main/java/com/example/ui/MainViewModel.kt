@@ -76,8 +76,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val platformPartnerDao = database.platformPartnerDao()
     private val partnershipApplicationDao = database.partnershipApplicationDao()
     private val projectTaskDao = database.projectTaskDao()
+    private val talentProfileDao = database.talentProfileDao()
+    private val talentEngagementDao = database.talentEngagementDao()
 
     // --- State Flows ---
+
+    val talentPool: StateFlow<List<TalentProfile>> = talentProfileDao.getAllTalents()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val talentEngagements: StateFlow<List<TalentEngagement>> = talentEngagementDao.getAllEngagements()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     private val _currentScreen = MutableStateFlow<Screen>(Screen.OnboardingWelcome)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
@@ -4201,6 +4209,259 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 showToast("No valid milestones parsed.")
             }
+        }
+    }
+
+    fun registerOrUpdateUserTalentProfile(
+        title: String,
+        skills: String,
+        bio: String,
+        location: String,
+        workPreference: String,
+        hourlyRate: String
+    ) {
+        viewModelScope.launch {
+            val currentProfile = profile.value
+            val name = currentProfile?.name ?: "Certified Learner"
+            val email = currentProfile?.email ?: "user@neurolearn.ai"
+            val level = currentProfile?.level ?: 1
+            val userProfileId = "user_talent_profile"
+
+            val talent = TalentProfile(
+                id = userProfileId,
+                name = name,
+                email = email,
+                title = title,
+                skills = skills,
+                certificationTitle = "Certified Elite Learner (Lvl $level)",
+                bio = bio,
+                location = location,
+                workPreference = workPreference,
+                hourlyRate = hourlyRate,
+                isCertified = true,
+                avatar = "avatar_user",
+                isUserProfile = true
+            )
+            talentProfileDao.insertTalent(talent)
+            awardXp(30)
+            showToast("Successfully published your profile to the Global Talent Hub! +30 XP 🌍")
+        }
+    }
+
+    fun removeUserTalentProfile() {
+        viewModelScope.launch {
+            talentProfileDao.deleteUserProfile()
+            showToast("Removed your profile from the public talent pool.")
+        }
+    }
+
+    fun submitTalentEngagement(
+        talentId: String,
+        talentName: String,
+        employerName: String,
+        jobTitle: String,
+        workType: String,
+        salaryOffer: String,
+        message: String,
+        contactEmail: String
+    ) {
+        viewModelScope.launch {
+            val engagement = TalentEngagement(
+                talentId = talentId,
+                talentName = talentName,
+                employerName = employerName,
+                jobTitle = jobTitle,
+                workType = workType,
+                salaryOffer = salaryOffer,
+                message = message,
+                status = "Pending",
+                contactEmail = contactEmail
+            )
+            talentEngagementDao.insertEngagement(engagement)
+            showToast("Engagement offer sent successfully to $talentName! They will review it in their inbox.")
+        }
+    }
+
+    fun updateTalentEngagementStatus(id: String, status: String) {
+        viewModelScope.launch {
+            talentEngagementDao.updateEngagementStatus(id, status)
+            if (status == "Accepted") {
+                awardXp(50)
+                showToast("Job offer ACCEPTED! +50 XP and 25 Coins! Contact details shared. 🎉")
+                addCoinsReward(25)
+            } else {
+                showToast("Job offer declined.")
+            }
+        }
+    }
+
+    fun deleteTalentEngagement(id: String) {
+        viewModelScope.launch {
+            talentEngagementDao.deleteEngagement(id)
+            showToast("Offer removed from active listings.")
+        }
+    }
+
+    private val _aiTutorResponse = MutableStateFlow<String?>(null)
+    val aiTutorResponse: StateFlow<String?> = _aiTutorResponse.asStateFlow()
+
+    private val _aiLibrarianResponse = MutableStateFlow<String?>(null)
+    val aiLibrarianResponse: StateFlow<String?> = _aiLibrarianResponse.asStateFlow()
+
+    fun clearAITutorResponse() {
+        _aiTutorResponse.value = null
+    }
+
+    fun clearAiLibrarianResponse() {
+        _aiLibrarianResponse.value = null
+    }
+
+    fun getAITutorMentorAdvice(
+        projectId: String,
+        projectTitle: String,
+        techStack: String,
+        persona: String, // "Mentor", "BugFixer", "Tutor"
+        userInput: String,
+        codeSnippet: String = ""
+    ) {
+        viewModelScope.launch {
+            _isAILoading.value = true
+            _aiTutorResponse.value = null
+            try {
+                val systemPrompt = when (persona) {
+                    "BugFixer" -> "You are an elite Software Quality Assurance Engineer & Compiler Auditor. Analyse the project and code, find logical or syntactical bugs, explain why they occur, and output a detailed step-by-step fix and the optimized corrected code blocks."
+                    "Tutor" -> "You are an inspiring, patient Socratic Tech Tutor. Teach the learner the specific concepts of the technology used. Break requirements into tiny micro-steps, explain complex logic, and suggest beginner to intermediate exercises."
+                    else -> "You are an experienced Principal Solutions Architect & Technical Mentor. Provide high-level architectural guidelines, stack decisions, security principles, development workflows, and industry-standard best practices."
+                }
+
+                val prompt = """
+                    Project Title: $projectTitle
+                    Tech Stack: $techStack
+                    
+                    User Query: $userInput
+                    ${if (codeSnippet.isNotBlank()) "Code/Error context:\n```\n$codeSnippet\n```" else ""}
+                    
+                    Please provide your tailored expertise, educational advice, or bug-fix. Keep the feedback structured, clear, and encouraging.
+                """.trimIndent()
+
+                val response = GeminiClient.generate(prompt, systemPrompt)
+                _aiTutorResponse.value = response
+                awardXp(15)
+                showToast("AI Advice Synthesized! +15 XP 💡")
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "AI Tutor error", e)
+                _aiTutorResponse.value = "Failed to connect to AI Tutor. Here is some offline sandbox advice:\n\nReview your tech stack ($techStack). For bugs in collaborative spaces, verify dependency versions, ensure proper State Management, and confirm database schemas match your model entities. Complete regular peer reviews to minimize technical debt."
+                showToast("Tutor offline. Sandbox backup loaded.")
+            } finally {
+                _isAILoading.value = false
+            }
+        }
+    }
+
+    fun getAISynthesizedLibraryBrief(
+        libraryName: String,
+        topic: String,
+        category: String
+    ) {
+        viewModelScope.launch {
+            _isAILoading.value = true
+            _aiLibrarianResponse.value = null
+            try {
+                val systemPrompt = "You are a world-class Global Open Access Research Librarian and Academic Literature Synthesizer. You synthesize scholarly briefs, technical blueprints, and study courses from world-famous open collections."
+                
+                val prompt = """
+                    Library Resource: $libraryName
+                    Research Topic: $topic
+                    Academic Category: $category
+                    
+                    Please synthesize a highly professional, comprehensive Research Brief on this topic. Format the response beautifully using clear headings:
+                    
+                    1. TITLE: [A scholarly title]
+                    2. ABSTRACT: [A concise academic abstract of the topic]
+                    3. SCIENTIFIC & TECHNICAL CORE: [Deep explanation of principles, mathematics, or systems architecture]
+                    4. PRACTICAL BLUEPRINT / EQUATIONS: [Provide code snippets, architecture maps, or equations]
+                    5. STRUCTURED STUDY PATH (5 Lessons): [A learning syllabus to master the topic step-by-step]
+                    6. VERIFIABLE PRACTICE QUIZ:
+                       Create 3 multiple-choice questions. Format each precisely like:
+                       Question 1: ...
+                       A) ...
+                       B) ...
+                       C) ...
+                       D) ...
+                       Correct Answer: [Letter]
+                       Explanation: ...
+                """.trimIndent()
+
+                val response = GeminiClient.generate(prompt, systemPrompt)
+                _aiLibrarianResponse.value = response
+                awardXp(20)
+                showToast("Library Research Synthesized! +20 XP 📚")
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "AI Library Synthesizer error", e)
+                _aiLibrarianResponse.value = """
+                    TITLE: Advanced Principles of $topic in $category
+                    
+                    ABSTRACT: This document synthesizes key scientific literature retrieved from open-access repositories regarding $topic. We examine the structural, architectural, and performance implications of this field for lifelong global learners.
+                    
+                    SCIENTIFIC & TECHNICAL CORE:
+                    Continuous learning and research are pivotal for global development. Under the frameworks of $libraryName, we analyze the integration of $topic. Real-time distributed state and lightweight edge computational components are explored.
+                    
+                    PRACTICAL BLUEPRINT / EQUATIONS:
+                    To implement local models or protocols for $topic:
+                    - Step 1: Initialize decoupled service loops.
+                    - Step 2: Establish decentralized verification pipelines.
+                    - Step 3: Run client-side safety checks.
+                    
+                    STRUCTURED STUDY PATH (5 Lessons):
+                    - Lesson 1: Foundations of $topic
+                    - Lesson 2: Core Protocols and System Topologies
+                    - Lesson 3: Practical Code Integrations and Web3 bindings
+                    - Lesson 4: Security Audits & Defensive Design
+                    - Lesson 5: Global Deployment & Scale Testing
+                    
+                    VERIFIABLE PRACTICE QUIZ:
+                    Question 1: What is the primary benefit of global open-access research repositories?
+                    A) Restricting scholarly knowledge to elite universities
+                    B) Providing unpaid, continuous, universal learning and decentralized knowledge transfer
+                    C) Promoting commercial paywalled publications
+                    D) Eliminating peer review structures
+                    Correct Answer: B
+                    Explanation: Open access libraries empower continuous and equitable learning globally.
+                """.trimIndent()
+                showToast("Librarian offline. Offline sandbox archive loaded.")
+            } finally {
+                _isAILoading.value = false
+            }
+        }
+    }
+
+    fun saveSynthesizedBriefToRepository(
+        title: String,
+        abstractText: String,
+        content: String,
+        category: String,
+        authors: String
+    ) {
+        viewModelScope.launch {
+            val paper = ResearchPaper(
+                id = "paper_synth_${java.util.UUID.randomUUID()}",
+                title = title,
+                authors = authors,
+                abstractText = abstractText,
+                category = category,
+                content = content,
+                coinCost = 0, // Unpaid world libraries must be 100% free!
+                isPurchased = true, // Free and open access immediately
+                publisherName = "NeuroLearn AI Global Open Repository",
+                publishYear = 2026,
+                fileSizeKb = (content.length / 1000) + 120,
+                reviewsCount = 0,
+                rating = 5.0f
+            )
+            researchPaperDao.insertPaper(paper)
+            logSystemAction("Synthesized academic paper published: $title")
+            showToast("Successfully published to the Public Library! +25 XP 🎓")
+            awardXp(25)
         }
     }
 }

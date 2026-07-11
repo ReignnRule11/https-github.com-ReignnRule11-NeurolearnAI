@@ -247,9 +247,11 @@ interface StudyTaskDao {
         AccreditedExamQuestion::class,
         PlatformPartner::class,
         PartnershipApplication::class,
-        ProjectTask::class
+        ProjectTask::class,
+        TalentProfile::class,
+        TalentEngagement::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -274,6 +276,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun platformPartnerDao(): PlatformPartnerDao
     abstract fun partnershipApplicationDao(): PartnershipApplicationDao
     abstract fun projectTaskDao(): ProjectTaskDao
+    abstract fun talentProfileDao(): TalentProfileDao
+    abstract fun talentEngagementDao(): TalentEngagementDao
 
     companion object {
         @Volatile
@@ -1033,6 +1037,76 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
             db.platformPartnerDao().insertAllPartners(starterPartners)
+
+            // Preseed Global Talent Pool
+            val starterTalents = listOf(
+                TalentProfile(
+                    id = "talent_alex",
+                    name = "Alex Rivera",
+                    email = "alex.rivera@globaldev.net",
+                    title = "Senior Android Engineer",
+                    skills = "Kotlin, Jetpack Compose, Coroutines, Room Database, Flow, MVVM, CI/CD",
+                    certificationTitle = "Blockchain-Certified Software Engineer",
+                    bio = "Experienced mobile developer specialized in creating high-performance, fluid, and modern Android applications with Jetpack Compose. Passionate about offline-first architectures and user experience.",
+                    location = "Austin, USA",
+                    workPreference = "Remote",
+                    hourlyRate = "$85/hr",
+                    avatar = "avatar_1"
+                ),
+                TalentProfile(
+                    id = "talent_chioma",
+                    name = "Chioma Okafor",
+                    email = "chioma.o@blockchainlabs.io",
+                    title = "Web3 & Smart Contract Architect",
+                    skills = "Solidity, Rust, Ethereum, Web3.js, Cryptography, Node.js, Go",
+                    certificationTitle = "Certified Web3 Specialist",
+                    bio = "Web3 engineer designing secure decentralized applications and robust smart contracts. Expert in DeFi protocol audits, cryptography paradigms, and zero-knowledge proofs.",
+                    location = "Lagos, Nigeria",
+                    workPreference = "Hybrid",
+                    hourlyRate = "$95/hr",
+                    avatar = "avatar_2"
+                ),
+                TalentProfile(
+                    id = "talent_meiling",
+                    name = "Mei-Ling Chen",
+                    email = "meiling.c@aistudios.sg",
+                    title = "AI Research Engineer",
+                    skills = "Python, PyTorch, TensorFlow, LLMs, NLP, Prompt Engineering, LangChain",
+                    certificationTitle = "Blockchain-Accredited AI Architect",
+                    bio = "ML research scientist building natural language processing models, fine-tuning large language models, and developing generative AI capabilities for educational tech ecosystems.",
+                    location = "Singapore",
+                    workPreference = "Remote",
+                    hourlyRate = "$110/hr",
+                    avatar = "avatar_3"
+                ),
+                TalentProfile(
+                    id = "talent_carlos",
+                    name = "Carlos Santana",
+                    email = "carlos.s@uxcreative.br",
+                    title = "Senior UI/UX Product Designer",
+                    skills = "Figma, Material Design 3, Design Systems, Prototyping, Wireframing, User Research",
+                    certificationTitle = "Certified Product Experience Specialist",
+                    bio = "User-centered designer crafting intuitive and highly accessible digital experiences. Specializes in Material 3 design systems, high-fidelity prototypes, and running agile UX design sprints.",
+                    location = "São Paulo, Brazil",
+                    workPreference = "Onsite",
+                    hourlyRate = "$65/hr",
+                    avatar = "avatar_4"
+                ),
+                TalentProfile(
+                    id = "talent_sarah",
+                    name = "Sarah Jenkins",
+                    email = "sarah.j@agilesprints.co.uk",
+                    title = "Agile Product Owner / Project Manager",
+                    skills = "Agile, Scrum, Jira, Product Roadmap Planning, Stakeholder Management, SQL, Gantt Charts",
+                    certificationTitle = "Certified Project Master",
+                    bio = "Results-driven project leader directing software engineering squads through Agile scrum sprints, backlog refinement, and product lifecycle releases with high operational velocity.",
+                    location = "London, UK",
+                    workPreference = "Remote",
+                    hourlyRate = "$75/hr",
+                    avatar = "avatar_5"
+                )
+            )
+            starterTalents.forEach { db.talentProfileDao().insertTalent(it) }
         }
     }
 }
@@ -1454,6 +1528,71 @@ interface ProjectTaskDao {
 
     @Query("DELETE FROM project_tasks WHERE projectId = :projectId")
     suspend fun deleteTasksForProject(projectId: String)
+}
+
+@Entity(tableName = "talent_profiles")
+data class TalentProfile(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val email: String,
+    val title: String,
+    val skills: String,
+    val certificationTitle: String,
+    val bio: String,
+    val location: String,
+    val workPreference: String, // "Remote", "Hybrid", "Onsite"
+    val hourlyRate: String,
+    val isCertified: Boolean = true,
+    val avatar: String = "avatar_1",
+    val isUserProfile: Boolean = false
+)
+
+@Dao
+interface TalentProfileDao {
+    @Query("SELECT * FROM talent_profiles ORDER BY isUserProfile DESC, name ASC")
+    fun getAllTalents(): Flow<List<TalentProfile>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTalent(talent: TalentProfile)
+
+    @Query("DELETE FROM talent_profiles WHERE id = :id")
+    suspend fun deleteTalent(id: String)
+
+    @Query("DELETE FROM talent_profiles WHERE isUserProfile = 1")
+    suspend fun deleteUserProfile()
+}
+
+@Entity(tableName = "talent_engagements")
+data class TalentEngagement(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val talentId: String,
+    val talentName: String,
+    val employerName: String,
+    val jobTitle: String,
+    val workType: String, // "Remote", "Hybrid", "Onsite"
+    val salaryOffer: String,
+    val message: String,
+    val status: String = "Pending", // "Pending", "Accepted", "Declined"
+    val contactEmail: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface TalentEngagementDao {
+    @Query("SELECT * FROM talent_engagements ORDER BY timestamp DESC")
+    fun getAllEngagements(): Flow<List<TalentEngagement>>
+
+    @Query("SELECT * FROM talent_engagements WHERE talentId = :talentId ORDER BY timestamp DESC")
+    fun getEngagementsForTalent(talentId: String): Flow<List<TalentEngagement>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEngagement(engagement: TalentEngagement)
+
+    @Query("UPDATE talent_engagements SET status = :status WHERE id = :id")
+    suspend fun updateEngagementStatus(id: String, status: String)
+
+    @Query("DELETE FROM talent_engagements WHERE id = :id")
+    suspend fun deleteEngagement(id: String)
 }
 
 
