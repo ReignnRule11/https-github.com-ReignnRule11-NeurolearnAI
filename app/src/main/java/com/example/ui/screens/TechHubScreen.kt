@@ -2709,6 +2709,14 @@ fun ProjectManagementBoardView(viewModel: MainViewModel) {
 
     val selectedProj = selectedProject
 
+    var activePaperToRead by remember { mutableStateOf<com.example.data.ResearchPaper?>(null) }
+    var miningProgressNonce by remember { mutableStateOf<Int?>(null) }
+    var mintedCertificateResult by remember { mutableStateOf<com.example.data.BlockchainCertificate?>(null) }
+
+    val activeProjId = selectedProj?.id ?: ""
+    val linkedPapersFlow = remember(activeProjId) { viewModel.getPapersByProject(activeProjId) }
+    val linkedPapers by linkedPapersFlow.collectAsState(initial = emptyList())
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -3119,6 +3127,102 @@ fun ProjectManagementBoardView(viewModel: MainViewModel) {
                         }
                     }
 
+                    // --- LINKED ACADEMIC RESOURCES ---
+                    if (linkedPapers.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "📚 LINKED SCHOLARLY PAPERS",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+
+                        items(linkedPapers) { paper ->
+                            var isExpanded by remember { mutableStateOf(false) }
+
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("linked_paper_card_${paper.id.take(8)}")
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1.0f)) {
+                                            Text(
+                                                text = paper.title,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "By ${paper.authors} • ${paper.publisherName} (${paper.publishYear})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        IconButton(onClick = { viewModel.unlinkPaperFromProject(paper.id) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Unlink Resource",
+                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = paper.abstractText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                                        maxLines = if (isExpanded) 15 else 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(onClick = { isExpanded = !isExpanded }) {
+                                            Text(
+                                                text = if (isExpanded) "Show Less" else "Read Abstract",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = { activePaperToRead = paper },
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.WorkspacePremium, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("PoW Study Room", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // --- 4. COLLABORATIVE TASK LIST ---
                     item {
                         Row(
@@ -3423,6 +3527,222 @@ fun ProjectManagementBoardView(viewModel: MainViewModel) {
                             .testTag("submit_board_task_btn")
                     ) {
                         Text("Create Collaborative Task", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    // Dialog for studying/reading research work and initiating certification
+    activePaperToRead?.let { paper ->
+        Dialog(onDismissRequest = { activePaperToRead = null }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📖 Academic Study Room",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        IconButton(onClick = { activePaperToRead = null }) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item {
+                            Text(
+                                text = paper.title,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "By ${paper.authors} | Published by ${paper.publisherName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = "SYLLABUS & SYNOPSIS",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = paper.abstractText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        item {
+                            Text(
+                                text = paper.content,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+
+                    // Mint Certification CTA
+                    Button(
+                        onClick = {
+                            viewModel.mintBlockchainCertificate(
+                                title = paper.title,
+                                sourceName = "Research work: " + paper.id.take(8).uppercase(),
+                                type = "RESEARCH",
+                                onMiningProgress = { nonce -> miningProgressNonce = nonce },
+                                onComplete = { result ->
+                                    mintedCertificateResult = result
+                                    miningProgressNonce = null
+                                    activePaperToRead = null
+                                }
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("mint_research_board_certificate_btn"),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.WorkspacePremium, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Complete & Mint Blockchain Certificate (+40 XP)")
+                    }
+                }
+            }
+        }
+    }
+
+    // Mining simulation dialog
+    miningProgressNonce?.let { nonce ->
+        Dialog(onDismissRequest = { /* Cannot cancel critical mining block */ }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(56.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "⛏️ Mining Sandbox Block...",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Finding cryptographic nonce to satisfy network difficulty...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "NONCE: $nonce",
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Success minted certification modal
+    mintedCertificateResult?.let { cert ->
+        Dialog(onDismissRequest = { mintedCertificateResult = null }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("👑", fontSize = 48.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Verifiable Certificate Minted!",
+                        fontWeight = FontWeight.ExtraBold,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Recipient: ${cert.recipientName}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                        Text("Syllabus: ${cert.title}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                        Text("Block Number: #${cert.blockNumber}", style = MaterialTheme.typography.bodySmall)
+                        Text("Nonce: ${cert.nonce}", style = MaterialTheme.typography.bodySmall)
+                        Text("Block Hash: ${cert.hash.take(18)}...", fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Text("Tx ID: ${cert.transactionHash.take(18)}...", fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Button(
+                        onClick = { mintedCertificateResult = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Acknowledge & Sync Ledger")
                     }
                 }
             }
@@ -4855,11 +5175,16 @@ fun AITutorFixerView(viewModel: MainViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnpaidLibrariesView(viewModel: MainViewModel) {
     val isAILoading by viewModel.isAILoading.collectAsState()
     val aiLibrarianResponse by viewModel.aiLibrarianResponse.collectAsState()
     val profile by viewModel.profile.collectAsState()
+
+    val isSearching by viewModel.isSearching.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+    val projects by viewModel.techProjects.collectAsState()
 
     var selectedLibrary by remember { mutableStateOf("arXiv Open Science Archive") }
     var researchTopic by remember { mutableStateOf("") }
@@ -4974,17 +5299,161 @@ fun UnpaidLibrariesView(viewModel: MainViewModel) {
             }
         }
 
+        // --- NEW: Real-Time Open Access Search & Fetch Engine ---
+        Text(
+            text = "2. Search Academic Repository Index",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                var searchQuery by remember { mutableStateOf("") }
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Search titles/keywords in $selectedLibrary") },
+                    placeholder = { Text("e.g. quantum entanglement, machine learning scalability...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("academic_search_query_input"),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Button(
+                    onClick = { viewModel.searchAcademicRepository(searchQuery, selectedLibrary) },
+                    enabled = !isSearching && searchQuery.isNotBlank(),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("academic_search_btn")
+                ) {
+                    if (isSearching) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
+                    } else {
+                        Icon(Icons.Default.TravelExplore, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Search Open Repository Indexes", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (searchResults.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Scholarly Preprints Found:",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    )
+
+                    searchResults.forEach { paper ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = paper.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    text = "By ${paper.authors} • ${paper.publishYear}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = paper.abstractText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                if (projects.isEmpty()) {
+                                    Text(
+                                        text = "⚠️ Propose a collaborative project in 'Workspace' to link this resource.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                } else {
+                                    var projectDropdownExpanded by remember { mutableStateOf(false) }
+                                    var chosenProject by remember { mutableStateOf(projects.firstOrNull()) }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box {
+                                            FilterChip(
+                                                selected = true,
+                                                onClick = { projectDropdownExpanded = true },
+                                                label = { Text("To: ${chosenProject?.title ?: "Select Project"}", maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 10.sp) },
+                                                trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+
+                                            DropdownMenu(
+                                                expanded = projectDropdownExpanded,
+                                                onDismissRequest = { projectDropdownExpanded = false }
+                                            ) {
+                                                projects.forEach { proj ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(proj.title, style = MaterialTheme.typography.bodySmall) },
+                                                        onClick = {
+                                                            chosenProject = proj
+                                                            projectDropdownExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                chosenProject?.let { proj ->
+                                                    viewModel.linkPaperToProject(paper, proj.id)
+                                                }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                            modifier = Modifier
+                                                .height(32.dp)
+                                                .testTag("link_paper_btn_${paper.id.take(8)}")
+                                        ) {
+                                            Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(12.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Link Project", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Form setup
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = "2. Focus Topic & Synthesis Method",
+                text = "3. Focus Topic & Synthesis Method",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )
 
             OutlinedTextField(
                 value = researchTopic,
                 onValueChange = { researchTopic = it },
-                label = { Text("What scientific topic or concept do you wish to study?") },
+                label = { Text("What scientific topic do you wish to synthesize?") },
                 placeholder = { Text("e.g. zk-STARKs performance benchmarks, Epistemological dialogues...") },
                 modifier = Modifier
                     .fillMaxWidth()

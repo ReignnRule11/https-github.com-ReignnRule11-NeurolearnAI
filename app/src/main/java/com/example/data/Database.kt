@@ -251,7 +251,7 @@ interface StudyTaskDao {
         TalentProfile::class,
         TalentEngagement::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1365,7 +1365,8 @@ data class ResearchPaper(
     val publishYear: Int,
     val fileSizeKb: Int,
     val reviewsCount: Int = 0,
-    val rating: Float = 4.5f
+    val rating: Float = 4.5f,
+    val associatedProjectId: String? = null
 )
 
 @Dao
@@ -1375,6 +1376,12 @@ interface ResearchPaperDao {
 
     @Query("SELECT * FROM research_papers WHERE id = :id LIMIT 1")
     suspend fun getPaperById(id: String): ResearchPaper?
+
+    @Query("SELECT * FROM research_papers WHERE associatedProjectId = :projectId")
+    fun getPapersByProject(projectId: String): Flow<List<ResearchPaper>>
+
+    @Query("UPDATE research_papers SET associatedProjectId = :projectId WHERE id = :id")
+    suspend fun associatePaperWithProject(id: String, projectId: String?)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPaper(paper: ResearchPaper)
