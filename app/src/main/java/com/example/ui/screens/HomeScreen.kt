@@ -126,19 +126,41 @@ fun HomeScreen(viewModel: MainViewModel) {
                     )
                 }
 
-                // Level Badge
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "Lvl ${profile?.level ?: 1}",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    val isDarkMode by viewModel.isDarkMode.collectAsState()
+                    IconButton(
+                        onClick = { viewModel.toggleDarkMode() },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .testTag("theme_mode_toggle_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = "Toggle Dark/Light Mode",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Level Badge
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Lvl ${profile?.level ?: 1}",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                 }
             }
 
@@ -179,6 +201,12 @@ fun HomeScreen(viewModel: MainViewModel) {
                         trackColor = MaterialTheme.colorScheme.surface
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            profile?.let {
+                LearningGoalsTracker(viewModel = viewModel, profile = it)
             }
         }
 
@@ -2925,5 +2953,278 @@ fun MiniMasteryProgress(label: String, score: Float, color: Color) {
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
         )
+    }
+}
+
+@Composable
+fun LearningGoalsTracker(
+    viewModel: MainViewModel,
+    profile: LearnerProfile
+) {
+    var isEditing by remember { mutableStateOf(false) }
+    var selectedGoalTab by remember { mutableStateOf(0) } // 0 = Daily, 1 = Weekly
+    
+    // Active parameters based on selection
+    val isDaily = selectedGoalTab == 0
+    val goalType = if (isDaily) profile.dailyGoalType else profile.weeklyGoalType
+    val goalTarget = if (isDaily) profile.dailyGoalTarget else profile.weeklyGoalTarget
+    val goalProgress = if (isDaily) profile.dailyGoalProgress else profile.weeklyGoalProgress
+    
+    val targetPercent = if (goalTarget > 0) (goalProgress.toFloat() / goalTarget.toFloat()).coerceIn(0f, 1f) else 0f
+    
+    // Goal adjustments state
+    var editType by remember(goalType, isEditing) { mutableStateOf(goalType) }
+    var editTarget by remember(goalTarget, isEditing) { mutableStateOf(goalTarget) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("learning_goals_tracker_card")
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Adjust,
+                        contentDescription = "Goals",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Learning Goals",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Stay on track with active recall habits",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                IconButton(
+                    onClick = { isEditing = !isEditing },
+                    modifier = Modifier.size(36.dp).testTag("edit_goals_button")
+                ) {
+                    Icon(
+                        imageVector = if (isEditing) Icons.Default.Close else Icons.Default.Edit,
+                        contentDescription = "Configure Goals",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Switch Tabs (Daily vs Weekly)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Daily Goal", "Weekly Goal").forEachIndexed { index, title ->
+                    val isSelected = selectedGoalTab == index
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable { selectedGoalTab = index }
+                            .testTag("goals_tab_$index"),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        ),
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal),
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (isEditing) {
+                // Config mode
+                Text(
+                    text = "Configure your ${if (isDaily) "Daily" else "Weekly"} Study Target",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                // Selector for Metric Type
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("cards" to "Cards", "quizzes" to "Quizzes", "xp" to "XP").forEach { (typeKey, typeLabel) ->
+                        val isTypeSelected = editType == typeKey
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { editType = typeKey }
+                                .testTag("edit_type_$typeKey"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isTypeSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                            ),
+                            border = BorderStroke(1.dp, if (isTypeSelected) MaterialTheme.colorScheme.secondary else Color.Transparent)
+                        ) {
+                            Box(modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = typeLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isTypeSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isTypeSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Selector for Goal Target (Inc / Dec buttons)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Target Goal Value:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        IconButton(
+                            onClick = { editTarget = (editTarget - (if (editType == "xp") 10 else 1)).coerceAtLeast(1) },
+                            modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape).testTag("goal_dec_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.Remove, contentDescription = "Decrease", modifier = Modifier.size(16.dp))
+                        }
+                        
+                        Text(
+                            text = "$editTarget",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                            modifier = Modifier.padding(horizontal = 8.dp).testTag("goal_target_value_text")
+                        )
+                        
+                        IconButton(
+                            onClick = { editTarget += (if (editType == "xp") 10 else 1) },
+                            modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape).testTag("goal_inc_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = "Increase", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        if (isDaily) {
+                            viewModel.setDailyGoal(editType, editTarget)
+                        } else {
+                            viewModel.setWeeklyGoal(editType, editTarget)
+                        }
+                        isEditing = false
+                    },
+                    modifier = Modifier.fillMaxWidth().height(40.dp).testTag("save_goals_button"),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("Save Study Target", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                }
+            } else {
+                // Progress mode
+                val metricText = when (goalType) {
+                    "cards" -> "Flashcards reviewed"
+                    "quizzes" -> "Quizzes completed"
+                    else -> "XP points earned"
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "My Goal: $goalTarget $metricText",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (targetPercent >= 1.0f) Icons.Default.CheckCircle else Icons.Default.Timeline,
+                                contentDescription = "Status",
+                                tint = if (targetPercent >= 1.0f) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (targetPercent >= 1.0f) "Goal Completed! 🎉" else "$goalProgress / $goalTarget finished",
+                                fontSize = 12.sp,
+                                color = if (targetPercent >= 1.0f) Color(0xFF00E676) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    Text(
+                        text = "${(targetPercent * 100).toInt()}%",
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
+                        color = if (targetPercent >= 1.0f) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("goals_percent_text")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LinearProgressIndicator(
+                    progress = targetPercent,
+                    color = if (targetPercent >= 1.0f) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .testTag("goals_progress_indicator")
+                )
+                
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                Text(
+                    text = "Tip: Active recall sessions like reviewing cards automatically update this progress!",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
     }
 }

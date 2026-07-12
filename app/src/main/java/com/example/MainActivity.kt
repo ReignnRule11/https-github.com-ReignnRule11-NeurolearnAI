@@ -28,16 +28,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
-                NeuroLearnAppShell()
+            val viewModel: MainViewModel = viewModel()
+            val isDarkMode by viewModel.isDarkMode.collectAsState()
+            MyApplicationTheme(darkTheme = isDarkMode) {
+                NeuroLearnAppShell(viewModel)
             }
         }
     }
 }
 
 @Composable
-fun NeuroLearnAppShell() {
-    val viewModel: MainViewModel = viewModel()
+fun NeuroLearnAppShell(viewModel: MainViewModel = viewModel()) {
     val currentScreen by viewModel.currentScreen.collectAsState()
     val toastMessage by viewModel.uiToast.collectAsState()
     val context = LocalContext.current

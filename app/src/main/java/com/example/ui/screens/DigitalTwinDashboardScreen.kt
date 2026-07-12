@@ -10,6 +10,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -371,6 +374,95 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(12.dp))
+
+                        val subjectMasteries = remember(allConcepts) {
+                            val grouped = allConcepts.groupBy { it.subject }
+                            if (grouped.isEmpty()) {
+                                listOf(
+                                    Triple("Computer Science", 85, 72),
+                                    Triple("Calculus", 64, 50),
+                                    Triple("Chemistry", 72, 58),
+                                    Triple("Web3 Dev", 90, 80)
+                                )
+                            } else {
+                                grouped.map { (subject, list) ->
+                                    val avgUnderstanding = if (list.isEmpty()) 0 else (list.map { it.understandingScore }.average() * 100).toInt()
+                                    val avgRetention = if (list.isEmpty()) 0 else (list.map { it.retentionScore }.average() * 100).toInt()
+                                    Triple(subject, avgUnderstanding, avgRetention)
+                                }.sortedBy { it.second }
+                            }
+                        }
+
+                        Text(
+                            text = "📊 Current Subject Masteries (Tap to ask Tutor for personalized explanation):",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            subjectMasteries.forEach { (subject, understanding, retention) ->
+                                val iconColor = when (subject.lowercase()) {
+                                    "computer science" -> MaterialTheme.colorScheme.primary
+                                    "calculus" -> MaterialTheme.colorScheme.secondary
+                                    "chemistry" -> Color(0xFFFF9800)
+                                    else -> MaterialTheme.colorScheme.tertiary
+                                }
+                                Card(
+                                    modifier = Modifier
+                                        .clickable {
+                                            viewModel.sendMessageToDigitalTwin("Explain my current mastery of $subject and give me a personalized explanation to improve my understanding ($understanding% score) and retention ($retention% score).")
+                                        }
+                                        .testTag("tutor_subject_badge_${subject.replace(" ", "_").lowercase()}"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = iconColor.copy(alpha = 0.08f)
+                                    ),
+                                    border = BorderStroke(1.dp, iconColor.copy(alpha = 0.18f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = subject,
+                                            tint = iconColor,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Column {
+                                            Text(
+                                                text = subject,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(
+                                                    text = "Understanding: $understanding%",
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "Retention: $retention%",
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Box displaying chat messages
                         Box(

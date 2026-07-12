@@ -42,7 +42,13 @@ data class LearnerProfile(
     val cardsReviewedCount: Int = 0,
     val quizzesCompletedCount: Int = 0,
     val isPremium: Boolean = false,
-    val coins: Int = 150
+    val coins: Int = 150,
+    val dailyGoalType: String = "cards", // "cards", "quizzes", "xp"
+    val dailyGoalTarget: Int = 10,
+    val dailyGoalProgress: Int = 0,
+    val weeklyGoalType: String = "cards", // "cards", "quizzes", "xp"
+    val weeklyGoalTarget: Int = 50,
+    val weeklyGoalProgress: Int = 0
 )
 
 @Entity(tableName = "concept_mastery")
@@ -253,7 +259,7 @@ interface StudyTaskDao {
         GlobalInternship::class,
         InternshipPlacement::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

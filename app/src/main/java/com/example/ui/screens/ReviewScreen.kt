@@ -58,6 +58,8 @@ import com.example.data.MindMapGraph
 import com.example.data.Flashcard
 import com.example.data.FlashcardRatingResult
 import com.example.data.FlashcardDeck
+import com.example.data.FirestoreDeck
+import com.example.data.FirestoreFlashcard
 import com.example.data.ChatMessage
 import com.example.ui.MainViewModel
 import android.content.Context

@@ -792,6 +792,34 @@ fun ProfileScreen(viewModel: MainViewModel) {
 
                     Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
 
+                    // Dark study theme toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val isDarkMode by viewModel.isDarkMode.collectAsState()
+                            Icon(
+                                imageVector = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
+                                contentDescription = "Dark Theme",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(text = "Dark Study Theme", style = MaterialTheme.typography.bodyLarge)
+                        }
+                        val isDarkMode by viewModel.isDarkMode.collectAsState()
+                        Switch(
+                            checked = isDarkMode,
+                            onCheckedChange = { viewModel.toggleDarkMode() },
+                            modifier = Modifier.testTag("dark_theme_toggle_switch")
+                        )
+                    }
+
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+
                     // Diagnostic Assessment Button
                     Row(
                         modifier = Modifier
