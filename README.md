@@ -35,6 +35,16 @@ Located on the **Home Screen** under the **Digital Twin Dashboard**, this featur
    - Engage with your Digital Twin in a highly polished chat interface (`digital_twin_chat` session).
    - Includes graceful, offline Socratic fallbacks tailored precisely to your current knowledge gaps and study priorities in case of API latency.
 
+### 🎙️ Socratic Voice Clarification (Microphone Access)
+To make clarification of complex computer science and engineering concepts frictionless, NeuroLearn AI integrates high-fidelity **Socratic Oral Clarification**:
+- **On-the-Spot Vocal Queries**: Tap the Microphone button next to the input field inside your Twin chat to open the verbal interactive dialog.
+- **Dynamic Permission Handshake**: The application performs real-time runtime permission checks for the Android `RECORD_AUDIO` permission.
+- **Visual Waveform Canvas Feedback**: When listening, a dynamic infinite Compose animation transition drives a pulsing Canvas drawing dynamic circular wave expansion, reacting to active speech patterns.
+- **Dual-Engine Speech Capture**:
+  - **Native Speech Engine**: Translates speech stream to tokenized strings using the Android `SpeechRecognizer` and `RecognizerIntent` services.
+  - **Socratic Concept Chips**: Provides pre-calibrated quick vocal shortcuts for testing complex topics like *PBFT Consensus*, *Multimodal Alignment Gaps*, *Room DB Migrations*, and *Asynchronous Coroutine Flow Schedulers*.
+- **Autonomous Twin Intake**: Spoken or simulated utterances are automatically processed, added to your chat feed, and fed to your Digital Twin avatar for instantaneous, targeted Socratic explanation.
+
 ---
 
 ## 📅 Socratic Daily Study Planner & Research Milestones - *NEW!*
@@ -198,6 +208,56 @@ data class BlockchainCertificate(
     val transactionHash: String,
     val timestamp: Long = System.currentTimeMillis()
 )
+```
+
+---
+
+## 📂 Detailed Project Structure
+
+Below is the directory tree of the NeuroLearn AI codebase, outlining the modern MVVM and clean-architecture separation of data, API clients, and Compose screen modules:
+
+```
+neurolearn-android/
+├── app/
+│   ├── build.gradle.kts (App-level Gradle dependencies and custom secrets configuration)
+│   └── src/
+│       └── main/
+│           ├── AndroidManifest.xml (Manifest declarations, record audio, network, & sync permission nodes)
+│           ├── java/com/example/
+│           │   ├── MainActivity.kt (App entry point, Compose scaffold container, and Screen routing host)
+│           │   ├── MainViewModel.kt (Central ViewModel managing state flows, DB queries, and API triggers)
+│           │   ├── api/
+│           │   │   ├── GeminiClient.kt (REST call configurations connecting with Gemini models and offline handlers)
+│           │   │   └── PdfTextExtractor.kt (Local PDF stream processing and structural chunking algorithms)
+│           │   ├── data/
+│           │   │   ├── Database.kt (Local Room database, SQLite schemas, entity classes, and access DAOs)
+│           │   │   ├── MindMap.kt (MindMap structural layout nodes and knowledge-graph associations)
+│           │   │   ├── FirestoreManager.kt (Simulated online document syncing and sync conflict hooks)
+│           │   │   └── SharedSessionModels.kt (Multiplayer collaborative live peer coding room state models)
+│           │   └── ui/
+│           │       ├── theme/
+│           │       │   ├── Color.kt (Material Design 3 semantic light/dark theme colors)
+│           │       │   ├── Theme.kt (Central Theme provider with dynamic and static schemas)
+│           │       │   └── Type.kt (Google Fonts integration and Material Typography pairings)
+│           │       └── screens/
+│           │           ├── HomeScreen.kt (Entry point hub routing users to study screens with status cards)
+│           │           ├── DigitalTwinDashboardScreen.kt (Personalized brain model mind maps, AI chat, & Socratic Voice Clarify)
+│           │           ├── TwinCustomizerDialog.kt (Conversational digital twin personality profile pickers)
+│           │           ├── StudyPlannerScreen.kt (Chronological interactive study milestone tracker & pomodoros)
+│           │           ├── TalentHubScreen.kt (Standalone recruiter directory and candidate pitch board)
+│           │           ├── TechHubScreen.kt (Intelligent mentor pairing, goal filters, and milestone progress)
+│           │           ├── TechStudyRoomScreen.kt (Global cooperative spaces and shared notes forums)
+│           │           ├── TutorScreen.kt (Socratic code tutor, architecture adviser, and QA bug solver)
+│           │           ├── ExamPartnershipsHubScreen.kt (Standardized exam banks & Stanford/UNICEF venture pitches)
+│           │           ├── LearnScreen.kt (Spaced repetition card decks, SHA-256 blockchain certificate mining)
+│           │           ├── PdfIntelligenceScreen.kt (PDF uploads parsing, syllabus extractors, and card builders)
+│           │           ├── ReviewScreen.kt (Targeted weak-concept repetition question sandboxes)
+│           │           ├── ProgressScreen.kt (Visual competency charts and statistical logs)
+│           │           ├── LanguageLabScreen.kt (Socratic multilingual real-time translation tools)
+│           │           └── LoginScreen.kt (Multiplayer session creator)
+│           └── res/ (Vector drawables, layout strings, XML backups, and launcher mipmaps)
+├── gradle/libs.versions.toml (Central Version Catalog for dependency tracking)
+└── README.md (This overview)
 ```
 
 ---

@@ -36,6 +36,18 @@ import com.example.data.StudyTask
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.RecognitionListener
+import android.content.Intent
+import android.os.Bundle
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.Canvas
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
@@ -49,8 +61,28 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
     val twinAdvice by viewModel.twinGuidanceText.collectAsStateWithLifecycle()
     val isAILoading by viewModel.isAILoading.collectAsStateWithLifecycle()
     val chatMessages by viewModel.activeChatMessages.collectAsStateWithLifecycle()
+    val placements by viewModel.internshipPlacements.collectAsStateWithLifecycle()
 
     var showCustomizerDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var showVoiceDialog by remember { mutableStateOf(false) }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            showVoiceDialog = true
+        } else {
+            Toast.makeText(context, "Microphone permission is required for Socratic Verbal Clarification.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    if (showVoiceDialog) {
+        SocraticVoiceDialog(
+            viewModel = viewModel,
+            onDismiss = { showVoiceDialog = false }
+        )
+    }
 
     if (showCustomizerDialog) {
         val currentTwinAvatar = profile?.selectedTwinAvatar ?: "socratic"
@@ -281,6 +313,17 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
                 }
             }
 
+            // Neural Cognitive Mind Map / Digital Twin State Visualization
+            item {
+                DigitalTwinMindStateMap(
+                    streak = profile?.streak ?: 1,
+                    level = profile?.level ?: 1,
+                    cardsReviewed = profile?.cardsReviewedCount ?: 0,
+                    activePlacementsCount = placements.count { it.status == "In Progress" },
+                    graduatedCount = placements.count { it.status == "Completed" }
+                )
+            }
+
             // Chat with Digital Twin Conversational Avatar
             item {
                 var chatInputText by remember { mutableStateOf("") }
@@ -396,6 +439,32 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            IconButton(
+                                onClick = {
+                                    val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+                                        context,
+                                        android.Manifest.permission.RECORD_AUDIO
+                                    )
+                                    if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                        showVoiceDialog = true
+                                    } else {
+                                        micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer)
+                                    .testTag("twin_chat_mic_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Voice Input",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
                             OutlinedTextField(
                                 value = chatInputText,
                                 onValueChange = { chatInputText = it },
@@ -898,5 +967,674 @@ fun ProgressRow(label: String, value: Float, color: Color) {
             color = color,
             trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)
         )
+    }
+}
+
+@Composable
+fun DigitalTwinMindStateMap(
+    streak: Int,
+    level: Int,
+    cardsReviewed: Int,
+    activePlacementsCount: Int,
+    graduatedCount: Int
+) {
+    var selectedHub by remember { mutableStateOf(0) } // Default to memory strength (0)
+    
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+    val flowOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "flowOffset"
+    )
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("cognitive_mind_map_card")
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "🧠 Neural Cognitive Mapping",
+                        fontWeight = FontWeight.Black,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Interactive Mind Space of your Digital Twin",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Sync: Real-Time",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Custom Interactive Canvas
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(16.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                val primaryColor = MaterialTheme.colorScheme.primary
+                val secondaryColor = MaterialTheme.colorScheme.secondary
+                val tertiaryColor = MaterialTheme.colorScheme.tertiary
+                val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            // Simple bounding box checker to switch selection
+                            selectedHub = (selectedHub + 1) % 4
+                        }
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    val cx = width / 2
+                    val cy = height / 2
+                    val r = kotlin.math.min(width, height) * 0.32f
+
+                    // 1. Draw Cognitive Radar Grid
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.05f),
+                        radius = r,
+                        center = androidx.compose.ui.geometry.Offset(cx, cy)
+                    )
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.03f),
+                        radius = r * 0.6f,
+                        center = androidx.compose.ui.geometry.Offset(cx, cy)
+                    )
+
+                    // 2. Define Satellite Coordinates
+                    // Angles: Top (-90), Right (0), Bottom (90), Left (180)
+                    val angles = listOf(-90.0, 0.0, 90.0, 180.0)
+                    val points = angles.map { deg ->
+                        val rad = Math.toRadians(deg)
+                        val px = cx + r * kotlin.math.cos(rad).toFloat()
+                        val py = cy + r * kotlin.math.sin(rad).toFloat()
+                        androidx.compose.ui.geometry.Offset(px, py)
+                    }
+
+                    // 3. Draw Pathways and Traveling Thought Impulses
+                    points.forEachIndexed { idx, p ->
+                        val isSelected = selectedHub == idx
+                        val pathwayColor = if (isSelected) primaryColor else primaryColor.copy(alpha = 0.25f)
+                        
+                        // Path line
+                        drawLine(
+                            color = pathwayColor,
+                            start = androidx.compose.ui.geometry.Offset(cx, cy),
+                            end = p,
+                            strokeWidth = if (isSelected) 3f else 1.5f
+                        )
+
+                        // Glowing signal traveling from core to satellite
+                        val dotX = cx + (p.x - cx) * flowOffset
+                        val dotY = cy + (p.y - cy) * flowOffset
+                        drawCircle(
+                            color = if (isSelected) secondaryColor else primaryColor.copy(alpha = 0.7f),
+                            radius = if (isSelected) 5.dp.toPx() else 3.5.dp.toPx(),
+                            center = androidx.compose.ui.geometry.Offset(dotX, dotY)
+                        )
+                    }
+
+                    // 4. Draw satellites
+                    val labels = listOf("Memory", "Foundations", "Practical", "Readiness")
+                    points.forEachIndexed { idx, p ->
+                        val isSelected = selectedHub == idx
+                        val nodeRadius = if (isSelected) 18.dp.toPx() else 14.dp.toPx()
+                        val colorScheme = when(idx) {
+                            0 -> primaryColor
+                            1 -> secondaryColor
+                            2 -> tertiaryColor
+                            else -> Color(0xFF4CAF50)
+                        }
+
+                        // Node Outer Aura
+                        drawCircle(
+                            color = colorScheme.copy(alpha = if (isSelected) 0.2f else 0.1f),
+                            radius = nodeRadius * pulseScale * 1.4f,
+                            center = p
+                        )
+
+                        // Node Fill
+                        drawCircle(
+                            color = if (isSelected) colorScheme else colorScheme.copy(alpha = 0.65f),
+                            radius = nodeRadius,
+                            center = p
+                        )
+
+                        // Node Core
+                        drawCircle(
+                            color = Color.White,
+                            radius = nodeRadius * 0.35f,
+                            center = p
+                        )
+                    }
+
+                    // 5. Draw central core
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.15f),
+                        radius = 28.dp.toPx() * pulseScale,
+                        center = androidx.compose.ui.geometry.Offset(cx, cy)
+                    )
+                    drawCircle(
+                        color = primaryColor,
+                        radius = 20.dp.toPx(),
+                        center = androidx.compose.ui.geometry.Offset(cx, cy)
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 6.dp.toPx(),
+                        center = androidx.compose.ui.geometry.Offset(cx, cy)
+                    )
+                }
+
+                // Small absolute helpers inside Box to display labels on satellites
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Text(
+                        text = "Memory Recall",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selectedHub == 0) primaryColor else onSurfaceColor.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 10.dp)
+                    )
+                    Text(
+                        text = "Applied Practice",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selectedHub == 2) tertiaryColor else onSurfaceColor.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 10.dp)
+                    )
+                    Text(
+                        text = "Foundations",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selectedHub == 1) secondaryColor else onSurfaceColor.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 6.dp)
+                    )
+                    Text(
+                        text = "Industry Prep",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selectedHub == 3) Color(0xFF2E7D32) else onSurfaceColor.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 6.dp)
+                    )
+
+                    // Tap Instruction indicator
+                    Text(
+                        text = "👉 TAP MAP TO ROTATE FOCUS HUB",
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.sp,
+                        color = onSurfaceColor.copy(alpha = 0.4f),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(top = 55.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 6. Selected Satellite Insights Panel
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    val title = when (selectedHub) {
+                        0 -> "🧠 Active Memory Recall Index"
+                        1 -> "📚 Foundations & Rigor"
+                        2 -> "💻 Applied Skill & Code Volume"
+                        else -> "🌍 Industry Internship Alignment"
+                    }
+                    val indexValue = when (selectedHub) {
+                        0 -> "${(65 + (streak * 2).coerceAtMost(25))}%"
+                        1 -> "${(70 + (level * 4).coerceAtMost(25))}%"
+                        2 -> "${(50 + (cardsReviewed / 5).coerceAtMost(45))}%"
+                        else -> if (graduatedCount > 0) "100% (Certified)" else if (activePlacementsCount > 0) "In Training" else "Ready to Match"
+                    }
+                    val explanation = when (selectedHub) {
+                        0 -> "Based on your daily streak of $streak and spaced-repetition performance. Your digital twin has stabilized active retention gaps."
+                        1 -> "Reflects theoretical topics mastered. Currently at Level $level with robust concept mastery models in your DB."
+                        2 -> "Aggregates absolute practice metrics including $cardsReviewed card repetitions. Confirms high tactile cognitive agility."
+                        else -> "Evaluates readiness for enterprise-grade contributions. Active Placements: $activePlacementsCount. Graduates: $graduatedCount."
+                    }
+                    val advice = when (selectedHub) {
+                        0 -> "Socratic advice: Revisit reviews every 12 hours to compress synaptic decay gaps."
+                        1 -> "Socratic advice: Tackle an accredited advanced module or technical paper to level up."
+                        2 -> "Socratic advice: Participate in open-source tech room exchanges and prototype creations."
+                        else -> "Socratic advice: Navigate to the Global Internships board to secure your next project!"
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = indexValue,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = explanation,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = advice,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SocraticVoiceDialog(
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var listeningStatus by remember { mutableStateOf("Initializing Microphone Stream...") }
+    var spokenResultText by remember { mutableStateOf("") }
+    var isListeningActive by remember { mutableStateOf(true) }
+
+    val isSpeechAvailable = remember { SpeechRecognizer.isRecognitionAvailable(context) }
+    
+    val speechRecognizer = remember {
+        if (isSpeechAvailable) {
+            try {
+                SpeechRecognizer.createSpeechRecognizer(context)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    val recognitionListener = remember {
+        object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                listeningStatus = "🎤 Listening for study concepts..."
+            }
+            override fun onBeginningOfSpeech() {
+                listeningStatus = "🎙️ Verbal signal detected..."
+            }
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                listeningStatus = "⏳ Synthesizing voice data..."
+            }
+            override fun onError(error: Int) {
+                val description = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "Audio record error"
+                    SpeechRecognizer.ERROR_CLIENT -> "Client side limit"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permissions denied"
+                    SpeechRecognizer.ERROR_NETWORK -> "Network failure"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech match"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Service busy"
+                    SpeechRecognizer.ERROR_SERVER -> "Server disconnected"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Silence timeout"
+                    else -> "Audio capture gap"
+                }
+                listeningStatus = "⚠️ $description. Select a concept below:"
+                isListeningActive = false
+            }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val speechText = matches[0]
+                    spokenResultText = speechText
+                    listeningStatus = "💡 Voice recognized!"
+                    isListeningActive = false
+                    
+                    viewModel.sendMessageToDigitalTwin(speechText)
+                    Toast.makeText(context, "Spoken query sent: \"$speechText\"", Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                } else {
+                    listeningStatus = "⚠️ No words detected. Try again or tap a concept below."
+                    isListeningActive = false
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    spokenResultText = matches[0]
+                }
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+    }
+
+    fun startListening() {
+        if (speechRecognizer != null) {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            try {
+                speechRecognizer.setRecognitionListener(recognitionListener)
+                speechRecognizer.startListening(intent)
+                listeningStatus = "🎙️ Listening... speak now"
+                isListeningActive = true
+            } catch (e: Exception) {
+                listeningStatus = "⚠️ Speech recognizer failure. Tap below to select topic:"
+                isListeningActive = false
+            }
+        } else {
+            listeningStatus = "🎙️ Voice Stream Simulated. Select a study topic below:"
+            isListeningActive = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        startListening()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                speechRecognizer?.stopListening()
+                speechRecognizer?.destroy()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "waveform_pulse")
+    val scale1 by infiniteTransition.animateFloat(
+        initialValue = 10f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "s1"
+    )
+    val scale2 by infiniteTransition.animateFloat(
+        initialValue = 20f,
+        targetValue = 90f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "s2"
+    )
+    val scale3 by infiniteTransition.animateFloat(
+        initialValue = 15f,
+        targetValue = 75f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutLinearInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "s3"
+    )
+
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .testTag("socratic_voice_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Microphone",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Socratic Oral Clarify",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Verbally ask your Digital Twin to clarify tricky flashcards, database policies, consensus limits, or complex theories in real-time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Box(
+                    modifier = Modifier
+                        .size(140.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isListeningActive) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            drawCircle(
+                                color = primaryColor.copy(alpha = 0.08f),
+                                radius = scale2.dp.toPx() + 20.dp.toPx()
+                            )
+                            drawCircle(
+                                color = primaryColor.copy(alpha = 0.12f),
+                                radius = scale3.dp.toPx() + 10.dp.toPx()
+                            )
+                            drawCircle(
+                                color = primaryColor.copy(alpha = 0.18f),
+                                radius = scale1.dp.toPx()
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (!isListeningActive) {
+                                startListening()
+                            } else {
+                                speechRecognizer?.stopListening()
+                                isListeningActive = false
+                                listeningStatus = "🎙️ Listening paused. Select a shortcut below:"
+                            }
+                        },
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isListeningActive) MaterialTheme.colorScheme.primary 
+                                else MaterialTheme.colorScheme.secondary
+                            )
+                    ) {
+                        Icon(
+                            imageVector = if (isListeningActive) Icons.Default.Mic else Icons.Default.MicOff,
+                            contentDescription = "Mic toggle",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = listeningStatus,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                if (spokenResultText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "\"$spokenResultText\"",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .padding(8.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "🎙️ Quick study concept shortcuts:",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val shortcuts = listOf(
+                    "Explain PBFT Consensus Protocols" to "Could you clarify how Practical Byzantine Fault Tolerance (PBFT) consensus operates under high network latency?",
+                    "Explain Multimodal Alignment" to "How does a multimodal LLM align visual tokens with semantic text spaces during embedding fusion?",
+                    "Explain Room Migration Policies" to "What is the best strategy to implement fallbackToDestructiveMigration inside a local Android Room DB?",
+                    "Explain Asynchronous Coroutines" to "Explain how Kotlin's Asynchronous flow compares to standard RxJava schedulers for background thread handshakes."
+                )
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    shortcuts.forEach { (label, prompt) ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
+                            onClick = {
+                                spokenResultText = prompt
+                                isListeningActive = false
+                                listeningStatus = "⚡ Simulating oral signal transmission..."
+                                
+                                viewModel.sendMessageToDigitalTwin(prompt)
+                                Toast.makeText(context, "Verbal concept sent to Socratic Twin", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Chat,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
     }
 }

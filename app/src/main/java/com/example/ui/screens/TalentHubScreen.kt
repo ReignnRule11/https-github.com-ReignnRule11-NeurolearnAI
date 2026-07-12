@@ -39,7 +39,9 @@ fun TalentHubScreen(viewModel: MainViewModel) {
     val engagements by viewModel.talentEngagements.collectAsState()
     val profileState by viewModel.profile.collectAsState()
 
-    var showEmployerTab by remember { mutableStateOf(true) } // true: Browse Pool, false: Manage My Profile / Offers
+    var selectedHubTab by remember { mutableStateOf(0) } // 0: Browse Pool, 1: Manage My Profile, 2: Global Internships
+    val internships by viewModel.globalInternships.collectAsState(initial = emptyList())
+    val placements by viewModel.internshipPlacements.collectAsState(initial = emptyList())
     var searchQuery by remember { mutableStateOf("") }
     var workFilter by remember { mutableStateOf("All") } // "All", "Remote", "Hybrid", "Onsite"
 
@@ -121,70 +123,100 @@ fun TalentHubScreen(viewModel: MainViewModel) {
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    // Tab 0: Browse Talents
                     Button(
-                        onClick = { showEmployerTab = true },
+                        onClick = { selectedHubTab = 0 },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (showEmployerTab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = if (selectedHubTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
                         ),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("talent_hub_tab_browse_pool")
+                            .testTag("talent_hub_tab_browse_pool"),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Icon(
                                 imageVector = Icons.Default.Group,
                                 contentDescription = null,
-                                tint = if (showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (selectedHubTab == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Browse Talents",
                                 fontWeight = FontWeight.Bold,
-                                color = if (showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp
+                                color = if (selectedHubTab == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp
                             )
                         }
                     }
 
+                    // Tab 1: My Profile
                     Button(
-                        onClick = { showEmployerTab = false },
+                        onClick = { selectedHubTab = 1 },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (!showEmployerTab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = if (selectedHubTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
                         ),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("talent_hub_tab_my_profile")
+                            .testTag("talent_hub_tab_my_profile"),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            val activeOfferCount = engagements.count { it.status == "Pending" }
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (!showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (selectedHubTab == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
-                            val activeOfferCount = engagements.count { it.status == "Pending" }
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = if (activeOfferCount > 0) "My Profile ($activeOfferCount)" else "My Profile",
                                 fontWeight = FontWeight.Bold,
-                                color = if (!showEmployerTab) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp
+                                color = if (selectedHubTab == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+
+                    // Tab 2: Global Internships
+                    Button(
+                        onClick = { selectedHubTab = 2 },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedHubTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("talent_hub_tab_internships"),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            val activePlacementCount = placements.count { it.status == "In Progress" }
+                            Icon(
+                                imageVector = Icons.Default.Public,
+                                contentDescription = null,
+                                tint = if (selectedHubTab == 2) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (activePlacementCount > 0) "Internships ($activePlacementCount)" else "Internships",
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedHubTab == 2) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp
                             )
                         }
                     }
                 }
             }
 
-            if (showEmployerTab) {
+            if (selectedHubTab == 0) {
                 // Search and Filters for pool
                 item {
                     Column(
@@ -438,7 +470,7 @@ fun TalentHubScreen(viewModel: MainViewModel) {
                         }
                     }
                 }
-            } else {
+            } else if (selectedHubTab == 1) {
                 // --- MANAGE MY LISTING & INBOX ---
                 val userTalent = talents.firstOrNull { it.isUserProfile }
 
@@ -832,6 +864,461 @@ fun TalentHubScreen(viewModel: MainViewModel) {
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // --- GLOBAL INTERNSHIPS BOARD ---
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                    ) {
+                        Text(
+                            text = "🌍 Global Remote Internships",
+                            fontWeight = FontWeight.Black,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Work with elite partner organizations on real industry challenges to build proof of competence. Delivers automated review milestones, premium XP, and mints on-chain verifiable work credentials.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Sub-section: Active Placement (In Progress / Completed / Applied)
+                val activePlacements = placements.filter { it.status != "Completed" }
+                if (activePlacements.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "⚡ Your Active Placements",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+                    }
+
+                    items(activePlacements) { placement ->
+                        val matchedIntern = internships.firstOrNull { it.id == placement.internshipId }
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                                .testTag("active_placement_${placement.id}")
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = placement.companyName.uppercase(),
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = placement.title,
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = placement.status,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Task completion bar
+                                val progressFraction = if (placement.totalTasks > 0) {
+                                    placement.currentProgress.toFloat() / placement.totalTasks.toFloat()
+                                } else 0f
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Industrial Milestones Delivered",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "${placement.currentProgress} / ${placement.totalTasks}",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                LinearProgressIndicator(
+                                    progress = { progressFraction },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                )
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Next milestone display
+                                if (matchedIntern != null && placement.currentProgress < placement.totalTasks) {
+                                    val milestones = matchedIntern.tasksText.split(";")
+                                    val currentMilestoneText = milestones.getOrNull(placement.currentProgress) ?: "Reviewing progress"
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                            .padding(12.dp)
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "NEXT ASSIGNED MILESTONE:",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = MaterialTheme.colorScheme.secondary,
+                                                letterSpacing = 1.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "📌 $currentMilestoneText",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.completeInternshipTask(
+                                                placementId = placement.id,
+                                                currentProgress = placement.currentProgress,
+                                                totalTasks = placement.totalTasks,
+                                                companyName = placement.companyName,
+                                                title = placement.title
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1.5f)
+                                            .testTag("deliver_milestone_btn_${placement.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Upload,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (placement.currentProgress + 1 >= placement.totalTasks) "Submit & Graduate" else "Deliver Milestone",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { viewModel.withdrawInternshipPlacement(placement.id) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("withdraw_internship_btn_${placement.id}")
+                                    ) {
+                                        Text("Withdraw", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Completed placements (Archive ledger)
+                val completedPlacements = placements.filter { it.status == "Completed" }
+                if (completedPlacements.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "🏆 Graduated Internships",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color(0xFF2E7D32),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+
+                    items(completedPlacements) { placement ->
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFF81C784)),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = placement.companyName,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                    Text(
+                                        text = placement.title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = Color(0xFF1B5E20)
+                                    )
+                                    Text(
+                                        text = "On-Chain Certificate Successfully Minted",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF388E3C)
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF81C784)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Graduated",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Section: Available Opportunities
+                item {
+                    Text(
+                        text = "💼 Available Opportunities",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                    )
+                }
+
+                val availableInternships = internships.filter { intern ->
+                    placements.none { it.internshipId == intern.id }
+                }
+
+                if (availableInternships.isEmpty()) {
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "All internships currently activated!",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(availableInternships) { intern ->
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                                .testTag("intern_card_${intern.id}")
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    // Brand circle
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = intern.logoText,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 18.sp,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = intern.companyName,
+                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = intern.title,
+                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text(
+                                    text = intern.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Badges
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "💰 Stipend: ${intern.stipend}",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "🌍 ${intern.location}",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                when (intern.difficulty) {
+                                                    "Expert" -> Color(0xFFFFEBEE)
+                                                    "Advanced" -> Color(0xFFFFF3E0)
+                                                    else -> Color(0xFFE8F5E9)
+                                                }
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = intern.difficulty,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = when (intern.difficulty) {
+                                                "Expert" -> Color(0xFFC62828)
+                                                "Advanced" -> Color(0xFFE65100)
+                                                else -> Color(0xFF2E7D32)
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Required Capabilities:",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    intern.requiredSkills.split(",").map { it.trim() }.forEach { skill ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(skill, fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Button(
+                                    onClick = { viewModel.applyForInternship(intern) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("apply_internship_btn_${intern.id}")
+                                ) {
+                                    Text("Apply & Submit Digital Twin Credentials", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

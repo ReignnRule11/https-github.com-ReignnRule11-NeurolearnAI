@@ -79,8 +79,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val projectTaskDao = database.projectTaskDao()
     private val talentProfileDao = database.talentProfileDao()
     private val talentEngagementDao = database.talentEngagementDao()
+    private val globalInternshipDao = database.globalInternshipDao()
+    private val internshipPlacementDao = database.internshipPlacementDao()
 
     // --- State Flows ---
+
+    val globalInternships: StateFlow<List<GlobalInternship>> = globalInternshipDao.getAllInternships()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val internshipPlacements: StateFlow<List<InternshipPlacement>> = internshipPlacementDao.getAllPlacements()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val talentPool: StateFlow<List<TalentProfile>> = talentProfileDao.getAllTalents()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -849,24 +857,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 4. Generate Socratic Twin advisor explanation using Gemini!
                 val dueDecksSummary = decksWithDueCounts.filter { it.second > 0 }
-                val prompt = """
-                    As the Socratic Study Twin Agent, analyze this complete academic and research profile:
-                    - Learner: ${profileVal.name}
-                    - Primary Study Goal: ${profileVal.learningGoals}
-                    - Active Research Topics & Papers:
-                    $activeResearchText
-                    - Available Daily Time: ${profileVal.availableStudyTime} mins
-                    - Flashcard Decks status:
+                
+                val pastPerformanceText = """
+                    - Continuous Active Study Streak: ${profileVal.streak} days
+                    - Current Gamified Progression: Level ${profileVal.level} with ${profileVal.xp} XP
+                    - Core Practice Volumetrics: ${profileVal.cardsReviewedCount} flashcards reviewed, ${profileVal.quizzesCompletedCount} quizzes completed
+                    - Initial Diagnostic Assessment Baseline: ${(profileVal.diagnosticScore * 100).toInt()}%
+                    - Spaced Repetition Retentive Health (Cards Pending vs Total):
                     ${decksWithDueCounts.joinToString("\n") { "  * Deck '${it.first.name}': ${it.second} cards due out of ${it.third} total." }}
-                    - Weak Concept Gaps:
-                    ${weakConcepts.joinToString("\n") { "  * ${it.name}: ${(it.understandingScore * 100).toInt()}% understanding" }}
+                    - Specific Cognitive Mastery Gaps (Concepts with low understanding scores):
+                    ${weakConcepts.joinToString("\n") { "  * ${it.name} (Prerequisites: ${it.prerequisites}): ${(it.understandingScore * 100).toInt()}% understanding, ${(it.retentionScore * 100).toInt()}% retention, ${(it.confidenceScore * 100).toInt()}% confidence score" }}
+                """.trimIndent()
 
-                    Provide an actionable 3-paragraph daily study schedule and learning milestones planner response:
-                    - Paragraph 1: Analyze memory decay in their flashcard decks and state which deck needs most immediate active recall attention. Highlight any specific research paper topics or milestones they should prioritize today based on their active research.
-                    - Paragraph 2: Map out exactly how they should allocate their ${profileVal.availableStudyTime} minutes today (incorporating active recall, socratic reading of their research paper topics, and concept revision gaps) for peak cognitive performance and milestone achievement.
-                    - Paragraph 3: Offer a brief, wise, and inspiring Socratic reflection from their digital twin regarding the integration of rigorous theory and creative research.
+                val currentGoalsText = """
+                    - Overarching Learning Objectives: ${profileVal.learningGoals}
+                    - Academic / Curriculum Standard Track: ${profileVal.curriculum}
+                    - Targeted Board or Class Exams: ${profileVal.targetExam}
+                    - Focused Mastery Subjects: ${profileVal.subjects}
+                    - Targeted Study Time Budget: ${profileVal.availableStudyTime} minutes today
+                """.trimIndent()
 
-                    Keep the response highly strategic, deeply tailored to their research, warm, and professional. Avoid markdown lists. Just write clean, cohesive, and motivating paragraphs.
+                val prompt = """
+                    As the Socratic Study Twin Agent, generate a deeply personalized daily study plan and academic timeline using the learner's historical past performance metrics and current active goals:
+
+                    ==== USER HISTORICAL PAST PERFORMANCE ====
+                    $pastPerformanceText
+
+                    ==== USER CURRENT ACADEMIC GOALS ====
+                    $currentGoalsText
+
+                    ==== ACTIVE RESEARCH MODULES ====
+                    $activeResearchText
+
+                    Provide a comprehensive, actionable 3-paragraph study advice and learning milestones planner:
+                    - Paragraph 1: Analyze past performance, active recall stats, and initial diagnostic baseline. Pinpoint exactly which knowledge gaps or pending spaced repetition decks (memory decay) require immediate high-intensity active recall based on their historical telemetry and ongoing streak. Mention any active research milestones to keep them aligned.
+                    - Paragraph 2: Map out a structured, step-by-step chronological roadmap for their ${profileVal.availableStudyTime} minutes today. Incorporate Pomodoro spacing intervals, socratic reading of active research topics, and specific concept revision sessions targeting their weakest understanding scores.
+                    - Paragraph 3: Offer a motivating, philosophically stimulating Socratic reflection from their digital twin, encouraging them to bridge practical skill training (flashcards, quizzes) with theoretical research milestones to maintain their progress streak.
+
+                    Ensure the response is highly analytical, deeply tailored to their unique stats, warm, and professional. Avoid markdown lists. Write clean, cohesive, and motivating paragraphs.
                 """.trimIndent()
 
                 try {
@@ -4422,6 +4450,84 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             talentEngagementDao.deleteEngagement(id)
             showToast("Offer removed from active listings.")
+        }
+    }
+
+    // --- Global Internship & Real-World Industry Experience Methods ---
+
+    fun applyForInternship(internship: GlobalInternship) {
+        viewModelScope.launch {
+            val placements = internshipPlacements.value
+            if (placements.any { it.internshipId == internship.id }) {
+                showToast("You have already applied or started this internship.")
+                return@launch
+            }
+            
+            // Step 1: Create an "Applied" placement
+            val placement = InternshipPlacement(
+                id = java.util.UUID.randomUUID().toString(),
+                internshipId = internship.id,
+                companyName = internship.companyName,
+                title = internship.title,
+                currentProgress = 0,
+                totalTasks = internship.tasksText.split(";").size,
+                status = "Applied"
+            )
+            internshipPlacementDao.insertPlacement(placement)
+            showToast("Submitting profile to ${internship.companyName} recruiter team...")
+            
+            // Step 2: 1.5-second automated evaluation delay, then admit to "In Progress"
+            kotlinx.coroutines.delay(1500)
+            internshipPlacementDao.insertPlacement(placement.copy(status = "In Progress"))
+            awardXp(30)
+            showToast("Congratulations! Your digital twin & certifications were matched. You are now admitted as an Intern! +30 XP 🌟")
+        }
+    }
+
+    fun completeInternshipTask(placementId: String, currentProgress: Int, totalTasks: Int, companyName: String, title: String) {
+        viewModelScope.launch {
+            val nextProgress = currentProgress + 1
+            if (nextProgress >= totalTasks) {
+                // Complete internship and grant rewards
+                internshipPlacementDao.updatePlacementProgress(
+                    id = placementId,
+                    progress = totalTasks,
+                    status = "Completed",
+                    completedAt = System.currentTimeMillis()
+                )
+                
+                awardXp(150)
+                addCoinsReward(100)
+                
+                // Mine a real blockchain credential for work experience
+                mintBlockchainCertificate(
+                    title = "Certified Industry Intern - $title",
+                    sourceName = "$companyName & NeuroLearn Joint Board",
+                    type = "Work Experience",
+                    onMiningProgress = {},
+                    onComplete = { cert ->
+                        showToast("Verifiable Work Experience minted successfully to block #${cert.blockNumber}! ⛓️")
+                    }
+                )
+                showToast("Fantastic! You completed all industrial milestones for $companyName! Earned +150 XP & +100 NeuroCoins! 🏆")
+            } else {
+                // Advance task
+                internshipPlacementDao.updatePlacementProgress(
+                    id = placementId,
+                    progress = nextProgress,
+                    status = "In Progress",
+                    completedAt = null
+                )
+                awardXp(25)
+                showToast("Milestone successfully delivered to corporate supervisor! +25 XP 🚀")
+            }
+        }
+    }
+
+    fun withdrawInternshipPlacement(id: String) {
+        viewModelScope.launch {
+            internshipPlacementDao.deletePlacement(id)
+            showToast("Withdrew application/placement.")
         }
     }
 

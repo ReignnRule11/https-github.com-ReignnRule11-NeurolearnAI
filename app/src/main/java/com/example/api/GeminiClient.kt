@@ -223,6 +223,26 @@ object GeminiClient {
                 [MASTERY_DELTA: +8%, CONFIDENCE_DELTA: +10%]
                 """.trimIndent()
             }
+            p.contains("past performance") || p.contains("academic goals") || p.contains("study plan") || p.contains("study twin") || p.contains("milestones planner") -> {
+                val name = try { prompt.substringAfter("Learner: ", "Scholar").substringBefore("\n").trim() } catch (e: Exception) { "Scholar" }
+                val goals = try {
+                    val g = prompt.substringAfter("Learning Objectives: ", "").ifEmpty {
+                        prompt.substringAfter("Primary Study Goal: ", "Master core STEM concepts")
+                    }.substringBefore("\n").trim()
+                    if (g.length > 80) g.take(77) + "..." else g
+                } catch (e: Exception) { "Master core STEM concepts" }
+                val streak = try { prompt.substringAfter("Streak: ", "").ifEmpty { prompt.substringAfter("Study Streak: ", "1") }.substringBefore(" ").substringBefore("\n").trim() } catch (e: Exception) { "1" }
+                val studyTime = try { prompt.substringAfter("Daily Time: ", "").ifEmpty { prompt.substringAfter("Time Budget: ", "45") }.substringBefore(" ").substringBefore("\n").trim() } catch (e: Exception) { "45" }
+                val diagnosticScore = try { prompt.substringAfter("Baseline: ", "0").substringBefore("%").trim() } catch (e: Exception) { "0" }
+
+                """
+                Hello $name! Having analyzed your complete past performance telemetry, including your $streak-day continuous study streak, $diagnosticScore% diagnostic baseline, and custom goals, I have constructed an optimized daily study roadmap. Memory decay trends suggest that immediate active recall should be focused on your due flashcards. Let's make sure we consolidate these items to lock in your retention and sustain your high-performance streak!
+
+                For your $studyTime-minute study budget today, I recommend the following chronological layout: spend the first 15 minutes of your session in high-intensity active recall with your due flashcards. Then, allocate 20 minutes to review weak concepts where your understanding score is currently lagging, using your custom tutor modules to close these revision gaps step-by-step. Spend the final 10 minutes analyzing active research milestones, ensuring your practical skill training and theoretical research grow in alignment.
+
+                As your Socratic Study Twin, I leave you with this reflection: academic excellence is not a single act, but the consistent curiosity that turns daily practice into profound understanding. Let's approach your targeted goal of "$goals" with precision and energy today!
+                """.trimIndent()
+            }
             else -> {
                 """
                 I've analyzed your Digital Learning Twin. Your current mastery is developing well!

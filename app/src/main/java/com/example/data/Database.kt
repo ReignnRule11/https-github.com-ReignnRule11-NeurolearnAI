@@ -249,9 +249,11 @@ interface StudyTaskDao {
         PartnershipApplication::class,
         ProjectTask::class,
         TalentProfile::class,
-        TalentEngagement::class
+        TalentEngagement::class,
+        GlobalInternship::class,
+        InternshipPlacement::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -278,6 +280,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun projectTaskDao(): ProjectTaskDao
     abstract fun talentProfileDao(): TalentProfileDao
     abstract fun talentEngagementDao(): TalentEngagementDao
+    abstract fun globalInternshipDao(): GlobalInternshipDao
+    abstract fun internshipPlacementDao(): InternshipPlacementDao
 
     companion object {
         @Volatile
@@ -1107,6 +1111,47 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
             starterTalents.forEach { db.talentProfileDao().insertTalent(it) }
+
+            // Pre-seed Global Internships
+            val starterInternships = listOf(
+                GlobalInternship(
+                    id = "intern_google",
+                    companyName = "Google AI Research",
+                    logoText = "G",
+                    title = "AI Research Fellow (Multimodal Evaluation)",
+                    description = "Participate in evaluation, benchmarking, and structured Socratic testing of state-of-the-art multimodal Gemini LLM configurations. Work alongside principal research scientists to evaluate model reasoning limits, formulate structured prompt evaluation patterns, and draft critical academic reports.",
+                    stipend = "$4,500/month",
+                    location = "Remote (Silicon Valley)",
+                    requiredSkills = "Kotlin, Python, LLMs, Prompt Engineering, Research Methodology",
+                    tasksText = "Synthesize benchmark accuracy metrics for multimodal reasoning;Implement automated Socratic prompt test suites;Formulate system instructions and edge-case validation scripts",
+                    difficulty = "Expert"
+                ),
+                GlobalInternship(
+                    id = "intern_stripe",
+                    companyName = "Stripe",
+                    logoText = "S",
+                    title = "FinTech Systems Software Engineer",
+                    description = "Bridge classroom learning with global finTech ecosystem deployments. Construct highly resilient network cache systems, secure callback mechanisms, and encrypted token synchronization engines for borderless distributed payment rails using modern Kotlin architectures.",
+                    stipend = "$3,800/month",
+                    location = "Hybrid (New York, NY)",
+                    requiredSkills = "Kotlin, REST APIs, SQLite, Cryptography, Clean Architecture",
+                    tasksText = "Deploy callback validation endpoints using standard SHA-256 integrity tags;Optimize local Room databases with incremental caching rules;Construct offline-first transaction queue managers with conflict handlers",
+                    difficulty = "Intermediate"
+                ),
+                GlobalInternship(
+                    id = "intern_ethereum",
+                    companyName = "Ethereum Foundation",
+                    logoText = "Ξ",
+                    title = "Decentralized Systems Protocol Developer",
+                    description = "Contribute directly to decentralized peer-to-peer state machines, PBFT consensus logs, and layer-2 Rollup client-side integrations. Write robust, mathematically formal protocols and verification modules designed to scale global secure computing environments.",
+                    stipend = "$4,200/month",
+                    location = "Remote (Zug, Switzerland)",
+                    requiredSkills = "Web3 & Blockchain, Cryptography, Kotlin, Consensus Engines",
+                    tasksText = "Deconstruct PBFT logging blocks and verify slot selection criteria;Design secure cryptographic signature verification algorithms;Simulate decentralized verifiable credential exchange structures",
+                    difficulty = "Advanced"
+                )
+            )
+            starterInternships.forEach { db.globalInternshipDao().insertInternship(it) }
         }
     }
 }
@@ -1600,6 +1645,67 @@ interface TalentEngagementDao {
 
     @Query("DELETE FROM talent_engagements WHERE id = :id")
     suspend fun deleteEngagement(id: String)
+}
+
+// --- Global Internship and Placements for Real-World Experience ---
+
+@Entity(tableName = "global_internships")
+data class GlobalInternship(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val companyName: String,
+    val logoText: String,
+    val title: String,
+    val description: String,
+    val stipend: String,
+    val location: String,
+    val requiredSkills: String, // Comma-separated list
+    val tasksText: String, // Semicolon-separated list of milestones
+    val difficulty: String = "Intermediate"
+)
+
+@Dao
+interface GlobalInternshipDao {
+    @Query("SELECT * FROM global_internships ORDER BY title ASC")
+    fun getAllInternships(): Flow<List<GlobalInternship>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInternship(internship: GlobalInternship)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllInternships(internships: List<GlobalInternship>)
+
+    @Query("DELETE FROM global_internships")
+    suspend fun clearAllInternships()
+}
+
+@Entity(tableName = "internship_placements")
+data class InternshipPlacement(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val internshipId: String,
+    val companyName: String,
+    val title: String,
+    val currentProgress: Int = 0, // Number of tasks completed
+    val totalTasks: Int,
+    val status: String = "Applied", // "Applied", "In Progress", "Completed"
+    val completedAt: Long? = null
+)
+
+@Dao
+interface InternshipPlacementDao {
+    @Query("SELECT * FROM internship_placements ORDER BY completedAt DESC, id DESC")
+    fun getAllPlacements(): Flow<List<InternshipPlacement>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlacement(placement: InternshipPlacement)
+
+    @Query("UPDATE internship_placements SET currentProgress = :progress, status = :status, completedAt = :completedAt WHERE id = :id")
+    suspend fun updatePlacementProgress(id: String, progress: Int, status: String, completedAt: Long?)
+
+    @Query("DELETE FROM internship_placements WHERE id = :id")
+    suspend fun deletePlacement(id: String)
+
+    @Query("DELETE FROM internship_placements")
+    suspend fun clearAllPlacements()
 }
 
 
