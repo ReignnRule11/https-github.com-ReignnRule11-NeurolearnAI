@@ -216,6 +216,7 @@ fun NeuroLearnAppShell() {
                     Screen.DigitalTwinDashboard -> DigitalTwinDashboardScreen(viewModel = viewModel)
                     Screen.StudyPlanner -> StudyPlannerScreen(viewModel = viewModel)
                     is Screen.TechStudyRoom -> TechStudyRoomScreen(viewModel = viewModel, roomId = screen.roomId)
+                    Screen.TalentHub -> TalentHubScreen(viewModel = viewModel)
                 }
             }
         }

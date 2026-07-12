@@ -48,6 +48,7 @@ sealed interface Screen {
     object StudyPlanner : Screen
     data class TechStudyRoom(val roomId: String) : Screen
     object ExamPartnershipsHub : Screen
+    object TalentHub : Screen
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -817,27 +818,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     taskIndex++
                 }
 
+                // Retrieve and integrate research topics and milestone tasks
+                val researchPapers = allResearchPapers.value
+                val purchasedPapers = researchPapers.filter { it.isPurchased }
+                val activeResearchText = if (purchasedPapers.isNotEmpty()) {
+                    purchasedPapers.joinToString("\n") { "  * [RESEARCH TOPIC] ${it.title} (Category: ${it.category}) - authors: ${it.authors}" }
+                } else {
+                    "None purchased or selected yet."
+                }
+
+                if (purchasedPapers.isNotEmpty()) {
+                    purchasedPapers.forEach { paper ->
+                        val task = StudyTask(
+                            conceptId = "research_${paper.id}",
+                            conceptName = "Analyze Research: ${paper.title.take(35)}...",
+                            subject = paper.category,
+                            dueDate = System.currentTimeMillis() + (taskIndex * 60 * 1000),
+                            isCompleted = false,
+                            xpAwarded = 25,
+                            deckId = null,
+                            taskType = "custom"
+                        )
+                        studyTasks.add(task)
+                        taskIndex++
+                    }
+                }
+
                 // 3. Save tasks to local Room Database
                 taskDao.insertAllTasks(studyTasks)
 
                 // 4. Generate Socratic Twin advisor explanation using Gemini!
                 val dueDecksSummary = decksWithDueCounts.filter { it.second > 0 }
                 val prompt = """
-                    As the Socratic Study Twin Agent, analyze this study status:
+                    As the Socratic Study Twin Agent, analyze this complete academic and research profile:
                     - Learner: ${profileVal.name}
-                    - Study Goal: ${profileVal.learningGoals}
+                    - Primary Study Goal: ${profileVal.learningGoals}
+                    - Active Research Topics & Papers:
+                    $activeResearchText
                     - Available Daily Time: ${profileVal.availableStudyTime} mins
                     - Flashcard Decks status:
                     ${decksWithDueCounts.joinToString("\n") { "  * Deck '${it.first.name}': ${it.second} cards due out of ${it.third} total." }}
                     - Weak Concept Gaps:
                     ${weakConcepts.joinToString("\n") { "  * ${it.name}: ${(it.understandingScore * 100).toInt()}% understanding" }}
 
-                    Provide an actionable 2-3 paragraph study schedule advisor response:
-                    - Paragraph 1: Analyze memory decay in their flashcard decks and state which deck needs most immediate active recall attention.
-                    - Paragraph 2: Map out how they should allocate their ${profileVal.availableStudyTime} minutes today (e.g. Pomodoro intervals between due decks and concepts) for peak retention.
-                    - Paragraph 3: A brief, wise, and Socratic encouraging word from their study twin.
+                    Provide an actionable 3-paragraph daily study schedule and learning milestones planner response:
+                    - Paragraph 1: Analyze memory decay in their flashcard decks and state which deck needs most immediate active recall attention. Highlight any specific research paper topics or milestones they should prioritize today based on their active research.
+                    - Paragraph 2: Map out exactly how they should allocate their ${profileVal.availableStudyTime} minutes today (incorporating active recall, socratic reading of their research paper topics, and concept revision gaps) for peak cognitive performance and milestone achievement.
+                    - Paragraph 3: Offer a brief, wise, and inspiring Socratic reflection from their digital twin regarding the integration of rigorous theory and creative research.
 
-                    Keep the response highly strategic, warm, professional, and do not use markdown lists. Just write clean, cohesive paragraphs.
+                    Keep the response highly strategic, deeply tailored to their research, warm, and professional. Avoid markdown lists. Just write clean, cohesive, and motivating paragraphs.
                 """.trimIndent()
 
                 try {
@@ -3556,6 +3585,100 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 _isAILoading.value = false
             }
+        }
+    }
+
+    fun startDigitalTwinChat() {
+        _activeChatSession.value = "digital_twin_chat"
+        viewModelScope.launch {
+            val count = chatDao.getMessagesForSession("digital_twin_chat").first().size
+            if (count == 0) {
+                val activeProfile = profile.value ?: LearnerProfile()
+                val avatar = activeProfile.selectedTwinAvatar
+                val greeting = when (avatar) {
+                    "tech" -> "Hello. I am your Tech Visionary Digital Twin. My logical structures are synchronized with your academic telemetry. Let's analyze your cognitive performance, debug your learning blocks, and optimize your study pipeline today. What technical topic or learning goal shall we prioritize?"
+                    "scholar" -> "Greetings, scholar. I am your Scholar Academic Digital Twin, reflecting your intellectual journey. I am delighted to discuss our current theoretical progress, clarify complex concepts, or plan our foundational research goals. On what academic pursuit shall we focus our efforts?"
+                    "creative" -> "Hey there! I'm your Creative Innovator Digital Twin! 🚀 Think of me as your personal brainstorming avatar. Let's play with mind-bending analogies, sketch out wild visual metaphors, and supercharge your curiosity. What awesome idea or concept do you want to play with first?"
+                    else -> "Welcome back. I am your Socratic Mentor Digital Twin. I exist to mirror your understanding and help you find truth through inquiry. What concept are we exploring today, and what questions does it raise in your mind?"
+                }
+                chatDao.insertMessage(
+                    ChatMessage(
+                        sessionId = "digital_twin_chat",
+                        role = "model",
+                        text = greeting
+                    )
+                )
+            }
+        }
+    }
+
+    fun sendMessageToDigitalTwin(userText: String) {
+        if (userText.isBlank()) return
+        viewModelScope.launch {
+            // Save user message
+            chatDao.insertMessage(ChatMessage(sessionId = "digital_twin_chat", role = "user", text = userText))
+            _isAILoading.value = true
+
+            val activeProfile = profile.value ?: LearnerProfile()
+            val avatar = activeProfile.selectedTwinAvatar
+            val gaps = allConcepts.value.filter { (it.understandingScore + it.confidenceScore) / 2f < 0.6f }
+            val gapNames = gaps.joinToString(", ") { it.name }
+            val goals = studyTasks.value.filter { !it.isCompleted }.joinToString(", ") { it.conceptName }
+            
+            val twinPersona = when (avatar) {
+                "tech" -> "You are 'The Tech Visionary' digital learning twin. Your tone is futuristic, precise, and highly analytical. Focus on structured definitions, algorithmic/logical reasoning, and technical formulas."
+                "scholar" -> "You are 'The Scholar Academic' digital learning twin. Your tone is classical, deep, and academically rigorous. Focus on historical foundations, deep theoretical insights, and formal academic explanations."
+                "creative" -> "You are 'The Creative Innovator' digital learning twin. Your tone is highly visual, playful, and energetic. Focus on rich analogies, real-world comparative metaphors, and engaging thought experiments."
+                else -> "You are 'The Socratic Mentor' digital learning twin. Your tone is thoughtful, reflective, and guided by questioning. Lead the student to answers using scaffolded hints and interactive dialogue instead of giving solutions outright."
+            }
+
+            val systemPrompt = """
+                $twinPersona
+                You are the user's conversational 'Digital Twin' or 'Cognitive Avatar'.
+                You maintain a personalized profile of the user's learning style, strengths, and goals.
+                Here is their current learning context:
+                - Learning Style: ${activeProfile.learningStyle}
+                - Learning Goals: ${activeProfile.learningGoals}
+                - Level: ${activeProfile.level} | Streak: ${activeProfile.streak} days
+                - Knowledge Gaps: $gapNames
+                - Active study goals / tasks: $goals
+                
+                Converse with the user, answer their questions, suggest customized strategies to improve, and play your role beautifully. Respond directly, conversationally, and keep it under 3 short paragraphs.
+            """.trimIndent()
+
+            // Fetch chat history for context
+            val history = chatDao.getMessagesForSession("digital_twin_chat").first().takeLast(8)
+            val historyContext = history.joinToString("\n") { "${it.role}: ${it.text}" }
+
+            if (GeminiClient.isApiKeyAvailable() && isNetworkOnline.value) {
+                try {
+                    val response = GeminiClient.generate(userText, systemPrompt)
+                    chatDao.insertMessage(ChatMessage(sessionId = "digital_twin_chat", role = "model", text = response))
+                } catch (e: Exception) {
+                    val fallback = getDigitalTwinLocalFallback(userText, avatar, gapNames, goals)
+                    chatDao.insertMessage(ChatMessage(sessionId = "digital_twin_chat", role = "model", text = fallback))
+                }
+            } else {
+                val fallback = getDigitalTwinLocalFallback(userText, avatar, gapNames, goals)
+                chatDao.insertMessage(ChatMessage(sessionId = "digital_twin_chat", role = "model", text = fallback))
+            }
+            _isAILoading.value = false
+        }
+    }
+
+    private fun getDigitalTwinLocalFallback(userText: String, avatar: String, gaps: String, goals: String): String {
+        return when (avatar) {
+            "tech" -> "🤖 [TECH TWIN STANDBY] Real-time neural network offline. I've recorded your entry: '$userText'. Let's continue monitoring our telemetry gaps ($gaps) and execute active goals ($goals) to optimize compile success!"
+            "scholar" -> "📚 [SCHOLAR REFLECTION] We are in offline intellectual contemplation. I note your query on '$userText'. Let's ponder our current academic gaps in $gaps, and continue solving $goals with scholarly determination."
+            "creative" -> "💡 [CREATIVE SPARKS OFFLINE] My imagination engines are in secure sleep mode, but I caught your message: '$userText'! Let's brainstorm analogies for our gaps ($gaps) and check off $goals together!"
+            else -> "🌱 [SOCRATIC ECHO] In our quiet contemplation, your voice asks: '$userText'. How does this question connect back to our learning hurdles in $gaps, and how can we use it to unlock our goal: $goals?"
+        }
+    }
+
+    fun clearDigitalTwinChat() {
+        viewModelScope.launch {
+            chatDao.clearSession("digital_twin_chat")
+            startDigitalTwinChat()
         }
     }
 

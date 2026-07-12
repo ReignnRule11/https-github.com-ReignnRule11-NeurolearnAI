@@ -4,9 +4,56 @@ NeuroLearn AI is a next-generation Android application designed to elevate conti
 
 ---
 
+## 💼 Standalone Employers & Learners Hub (Talent Hub) - *NEW!*
+
+The **Employers & Learners Hub** (previously embedded inside Tech Hub) has been fully decoupled to stand alone as a first-class feature! It is accessible directly from the **Home Screen** via the high-visibility **Employers & Learners Hub** card, providing streamlined engagement and borderless recruiter interactions.
+
+### 🧠 How It Works
+1. **Decoupled Architecture**: Designed as an independent module (`TalentHubScreen.kt`) to ensure fast performance, focused layouts, and immediate accessibility.
+2. **Interactive Talent Directory**:
+   - **Browse Talents Tab**: Recruiters can browse global portfolios, filtering candidates by specific technical skills (e.g., Kotlin, Solidity) or work preferences (Remote, Hybrid, Onsite).
+   - **My Profile Tab**: Students publish their certified, blockchain-verifiable credentials to the open market, indicating their professional title, target rates, technical skills, and locations.
+3. **Direct Recruiter Engagements**:
+   - Recruiters click **Engage** to launch a direct engagement proposal form, specifying role title, salary/rate offer, work model, and customizable invitations.
+   - Offers flow straight into the student's personal **Recruiter Engagement Inbox** in real-time, allowing students to **Accept** or **Decline** contract proposals interactively.
+4. **Verifiable Proof-of-Work**: Student profiles are marked with green checkmarks indicating verified credentials committed via the platform's simulated Proof-of-Work certificate ledger.
+
+---
+
+## 🎭 Socratic Digital Twin & Conversational Avatar - *NEW!*
+
+Located on the **Home Screen** under the **Digital Twin Dashboard**, this feature uses the Gemini API to construct and interact with a personalized, real-time replica of your academic style, progress, and focus.
+
+### 🧠 How It Works
+1. **Dynamic Synced Personality**: The Socratic Digital Twin analyzes your active Room database (including daily time budget, learning goals, flashcard review history, and weak concept gaps) to calibrate its advice.
+2. **Interactive Personas**: Choose from distinct conversational avatar personalities:
+   - **Tech Visionary**: Logic-driven, focuses on systems design, optimization pipelines, and debugging.
+   - **Scholar Academic**: Focused on deep theoretical science, classical research methodology, and foundational literature.
+   - **Creative Innovator**: Highly playful, suggests visual metaphors and brainstorming analogies.
+   - **Socratic Mentor**: Interactive query-driven guide helping you unpack concepts step-by-step.
+3. **Real-Time Conversational Chat**: 
+   - Engage with your Digital Twin in a highly polished chat interface (`digital_twin_chat` session).
+   - Includes graceful, offline Socratic fallbacks tailored precisely to your current knowledge gaps and study priorities in case of API latency.
+
+---
+
+## 📅 Socratic Daily Study Planner & Research Milestones - *NEW!*
+
+Accessed from the **Home Screen**, the **Intelligent Study Planner** organizes learning milestones based on your active research papers, progress, and spaced repetition curves.
+
+### 🧠 How It Works
+1. **Active Research Integration**: If you have purchased academic research papers (e.g., blockchain consensus, neural synths), the planner automatically detects them as active research topics.
+2. **AI Milestone Generation**:
+   - Clicking **Generate Daily Roadmap** sends your profile goals, spaced recall deck counts, weak concept gaps, and active research topics to the Gemini API.
+   - The AI processes this telemetry to generate a customized 3-paragraph chronological daily roadmap and structured milestones.
+   - Research papers are dynamically added to the timeline as **Research Milestones** (custom tasks awarding **+25 XP** upon deep analysis).
+3. **Chronological Interactive Timeline**: Displays Pomodoro intervals, cognitive breaks, concept tutoring exercises, and spaced review sessions with status tracking checkboxes.
+
+---
+
 ## 🎯 Expert Mentor-Mentee Matching System
 
-Located within the **Tech Hub** of NeuroLearn AI, the **Mentor Match** tab provides an intelligent bridge between learners collaborating on high-level tech projects and virtual industry mentors.
+Located within the **Tech Hub**, the **Mentor Match** tab provides an intelligent bridge between learners collaborating on high-level tech projects and virtual industry mentors.
 
 ### 🧠 How It Works
 1. **Goal Alignment**: The matching algorithm parses the learner's explicit **Learning Goals** and preferred **Study Style** configured in their user profile.
@@ -64,59 +111,29 @@ NeuroLearn AI integrates a state-of-the-art **World Repository for Academic Rese
 ### 🧠 How It Works
 1. **Repository Access**: Learners can browse peer-reviewed research papers (e.g., Web3 Consensus, Neural Networks, Edge Computing) or consult the **Global Unpaid Libraries** switcher.
 2. **Global Unpaid Libraries System**:
-   - Continuous, universal learning globally is a fundamental right. NeuroLearn connects learners directly to the world's most trusted open-access academic and protocol libraries:
-     * **arXiv Open Science Archive**: 16+ Million STEM preprints, advanced mathematical proofs, and neural systems research papers.
-     * **MIT OpenCourseWare**: Complete curriculum blueprints, engineering schemas, and algorithms lectures notes.
-     * **Project Gutenberg**: Historic scientific monographs, philosophy of science classics, and logical systems.
-     * **PubMed Central (PMC)**: 100% free computational neuroscience, bioinformatics, and health informatics.
-     * **W3C & IETF Protocol Specs**: Decentralized internet protocol RFCs, routing standards, and cryptography specifications.
-     * **Internet Archive**: Universal literature, language manuscripts, and historical technology reviews.
-3. **AI Research Librarian Synthesis**:
-   - Select any library and set your specific focus topic.
-   - The AI Librarian processes the collection to generate a tailored **Scholarly Study Brief** containing key textbook definitions, advanced proofs analysis, and Socratic study questions.
-4. **Public Open-Access Publishing**:
-   - If the synthesis is valuable, click **"Publish to Public Open Access Repository"** to save it straight to the local SQLite database.
-   - Once saved, the study brief immediately appears on the decentralized marketplace with a **0-Coin Free Access** tier, allowing other learners globally to study, review, and mine certificates on it!
-5. **Knowledge Marketplace**:
-   - Free or open abstracts can be downloaded immediately.
-   - Advanced technical papers can be unlocked using **NeuroCoins** (e.g., 30 coins), directly supporting scholarly authors.
-   - Premium Max subscribers bypass all coin requirements with unlimited instant access.
-6. **On-Chain Certification (Mining Simulation)**:
-   - Upon studying a paper in full, the learner can opt to complete the study.
-   - This launches a **Simulated Proof-of-Work (PoW) Mining Miner**.
-   - The miner runs a live cryptographic loop on the device's JVM, searching for a SHA-256 hash that begins with `00` (representing network difficulty).
-   - Once mined, the system issues a **Blockchain Certificate** containing a verifiable transaction hash (`0x...`), Block Number, Nonce, and previous block's SHA-256 hash.
-   - Completing studies and mining certificates rewards the user with **+40 XP** to level up.
-4. **Verifiable Ledger Verification**:
-   - Inside the **Certificates** tab, the learner's entire block history is rendered.
-   - A **Live Cryptographic Verification Check** button re-hashes all block headers mathematically:
-     `SHA-256(recipientName | title | sourceName | type | previousHash | nonce)`
-     to verify block authenticity and guarantee mathematical integrity live on-screen.
+   - Connections to:
+     * **arXiv Open Science Archive**: 16+ Million STEM preprints.
+     * **MIT OpenCourseWare**: Complete curriculum blueprints and engineering schemas.
+     * **Project Gutenberg**: Scientific monographs and classical philosophy.
+     * **PubMed Central (PMC)**: Free computational neuroscience and biology papers.
+     * **W3C & IETF Protocol Specs**: Decentralized internet protocol RFCs and routing standards.
+     * **Internet Archive**: Literature and history texts.
+3. **AI Research Librarian Synthesis**: Generates a tailored **Scholarly Study Brief** containing key textbook definitions, advanced proofs analysis, and Socratic study questions.
+4. **On-Chain Certification (Mining Simulation)**: Runs a Proof-of-Work (PoW) miner searching for SHA-256 hashes starting with `00`. Once mined, commits a **Blockchain Certificate** containing nonce, previous hash, and block index to the local verifiable ledger.
 
 ---
 
 ## 🎓 Governing Exam Boards & Strategic Partnerships Ecosystem
 
-NeuroLearn AI introduces an innovative regionalized module aligning **Accredited National Exam Boards** with a **Global Venture, NGO & Institutional Alliance Network**:
+Aligns regional educational standards with funding sandboxes:
 
 ### 🧠 1. Accredited Exam Boards (Region-Sensitive Question Banks)
-- **Local Governing Bodies**: Students can dynamically filter and browse certified standard exams based on their country's regulatory authorities:
-  - **Nigeria**: West African Examinations Council (WAEC), JAMB, NECO.
-  - **Kenya**: Kenya National Examinations Council (KNEC - KCSE).
-  - **United States**: College Board Advanced Placement (AP) Standards.
-  - **United Kingdom**: Ofqual Standards (Edexcel & AQA syllabus).
-  - **India**: CBSE Board national curricula benchmarks.
-  - **South Africa**: UMALUSI National Senior Certificate benchmarks.
-- **Accredited Step-by-Step Solutions**: Each mathematical or scientific question is served with a fully verified, board-compliant **3-Step procedural layout** detailing the conceptual formula, variables, calculation, and final solution with visual indicators.
+- **Local Governing Bodies**: Filter exam questions from **WAEC/JAMB/NECO** (Nigeria), **KNEC** (Kenya), **College Board AP** (USA), **Ofqual** (UK), **CBSE** (India), and **UMALUSI** (South Africa).
+- **Accredited Step-by-Step Solutions**: Formats science/math solutions into verified 3-step compliant paths.
 
 ### 🌐 2. Strategic Partnerships & Funding Hub (Ecosystem Support)
-- **Alliance Pathways**: We map institutional connections across several major categories to provide real platform and funding support for active learner projects:
-  - **Universities & Tech Colleges**: e.g., Stanford University, Nairobi Technical College.
-  - **NGOs**: e.g., UNICEF STEM Fund, Mastercard Foundation.
-  - **Government Parastatals**: e.g., National Information Technology Development Agency (NITDA).
-  - **Accelerators & VCs**: e.g., Y Combinator (YC Academy Support), Sequoia Capital (Launchpad Syndicate), Techstars.
-- **Strategic Pitch Builder (Funding Sandboxes)**: Learners can select any strategic partner and submit a formal, secure digital sandbox proposal (specifying Project Name, Lead Investigator, Requested Support, and an Entrepreneurial Pitch). 
-- **Application History Log**: Active proposals are logged in real-time within the local SQLite ledger to monitor evaluation, sandbox matches, and funding allocations.
+- **Alliance Pathways**: Connects Stanford, UNICEF STEM Fund, NITDA, Y Combinator, and Sequoia.
+- **Strategic Pitch Builder**: Enter Project Name, Requested Support, and an Entrepreneurial Pitch to submit sandbox funding requests.
 
 ---
 
@@ -181,132 +198,26 @@ data class BlockchainCertificate(
     val transactionHash: String,
     val timestamp: Long = System.currentTimeMillis()
 )
-
-@Entity(tableName = "accredited_exam_questions")
-data class AccreditedExamQuestion(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val country: String,
-    val governingBody: String,
-    val subject: String,
-    val acreditationStatus: String,
-    val questionText: String,
-    val difficulty: String = "Medium",
-    val step1Title: String,
-    val step1Explain: String,
-    val step2Title: String,
-    val step2Explain: String,
-    val step3Title: String,
-    val step3Explain: String,
-    val correctAnswer: String
-)
-
-@Entity(tableName = "platform_partners")
-data class PlatformPartner(
-    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
-    val name: String,
-    val type: String,
-    val description: String,
-    val fundingRange: String,
-    val focusAreas: String,
-    val supportProvided: String
-)
-
-@Entity(tableName = "partnership_applications")
-data class PartnershipApplication(
-    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
-    val partnerId: String,
-    val partnerName: String,
-    val projectName: String,
-    val applicantName: String,
-    val pitchText: String,
-    val fundingRequested: String,
-    val status: String = "Pending Review",
-    val timestamp: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "project_tasks")
-data class ProjectTask(
-    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
-    val projectId: String,
-    val title: String,
-    val description: String,
-    val assignedTo: String,
-    val isCompleted: Boolean = false,
-    val dueDate: String = "",
-    val createdAt: Long = System.currentTimeMillis()
-)
 ```
-
----
-
-## 📋 Collaborative Project Board & Mentor Milestone Integration
-
-NeuroLearn AI integrates a comprehensive, real-time **Collaborative Project Management Board** allowing team members and mentors to track project roadmaps seamlessly.
-
-### 🧠 How It Works
-1. **Interactive Milestones**: Users can select from their active technology proposals or joined team projects.
-2. **Team & Status Tracking**: Shows the project's real-time **Roster** of collaborators alongside a visual Material 3 **Completion Progress Bar** derived dynamically from task checkboxes.
-3. **Seamless Mentor Integration**: 
-   - If an expert mentor has been matched to the selected project under the **Mentor Match** tab, the board automatically fetches the match details (Mentor Name, Alignment, Analysis).
-   - A single-click **"Import Milestones"** action parses the mentor's customized learning path (generated via Gemini AI or local intelligence) and populates them instantly as interactive tasks assigned directly to the mentor or student!
-4. **Task Customization**:
-   - Create custom collaborative tasks specifying Task Title, Description, Assigned Team Member, and Target Due Date.
-   - Live status toggles reward progress with **+15 XP** upon completion of collaborative objectives.
 
 ---
 
 ## 🏷️ TestTag Reference for UI Testing
 
-Every critical component includes `Modifier.testTag` declarations for effortless Robolectric, Espresso, and UI-driven automation:
-
 | UI Element / Dialog | TestTag ID | Description |
 | :--- | :--- | :--- |
-| **Tab: Mentor Match** | `tech_hub_tab_mentors` | Switches active tab to the Mentor-Mentee panel. |
-| **Tab: Repository** | `tech_hub_tab_repository` | Switches active tab to the Academic & Knowledge Marketplace. |
-| **Tab: Certificates** | `tech_hub_tab_certificates` | Switches active tab to the Verifiable Blockchain Ledger. |
-| **Research Cards** | `research_paper_card_<id>` | Individual card container for an academic paper. |
-| **Buy Research Paper** | `buy_paper_btn_<id>` | Triggers coin purchase and unlocks full content. |
-| **Study Research Paper** | `read_paper_btn_<id>` | Opens detailed study modal for a purchased paper. |
-| **Mint Certificate** | `mint_research_certificate_btn` | Starts live SHA-256 cryptographic PoW mining. |
-| **Verification Check** | `verify_hash_btn_<id>` | Triggers live mathematical hash verification. |
-| **Reset Blockchain Ledger** | `reset_blockchain_ledger_btn` | Clears local database blockchain ledger blocks. |
-| **Monetization Dashboard** | `monetization_panel` | Displays profile tier, coin balance, and upgrade CTA. |
-| **Storefront Dialog** | `storefront_dialog` | Pop-up container displaying token packages. |
-| **Launch Shop Button** | `open_store_btn` | Button that opens the NeuroCoins Token Shop. |
-| **Starter Scholar Pack Purchase** | `buy_pack_starter` | Action card to purchase 100 coins for $1.99. |
-| **Growth Pack Purchase** | `buy_pack_growth` | Action card to purchase 350 coins for $4.99. |
-| **Premium Pass Purchase** | `buy_pack_premium` | Action card to purchase unlimited tier for $9.99. |
-| **Upgrade Premium Button** | `upgrade_premium_btn` | Main CTA to instantly activate Premium Max. |
-| **Exam & Partners Home Card** | `home_exam_partnerships_card` | Navigation card on the HomeScreen. |
-| **Accredited Boards Tab** | `tab_questions_bank` | Tab to load regional exam question banks. |
-| **Strategic Partnerships Tab** | `tab_partnerships` | Tab to load university/VC funding networks. |
-| **Country Tab Filter** | `country_tab_<country>` | Clickable tag to switch local exam governing bodies. |
-| **Subject Filter Chip** | `filter_chip_<subject>` | Filter chip to narrow down exam subject banks. |
-| **Partner Strategic Card** | `partner_card_<id>` | Individual card representing a university, VC, or NGO. |
-| **Submit Proposal Pitch** | `apply_partner_btn_<id>` | Action button to open proposal strategic builder. |
-| **Proposal Strategic Form** | `apply_partnership_form` | Interactive form to enter pitch details. |
-| **Submit Sandbox Pitch** | `submit_partnership_btn` | Sends the pitch to local SQLite persistence and alerts board. |
-| **Tab: Project Board** | `tech_hub_tab_project_board` | Switches active tab to the Project Board panel. |
-| **Project Selector** | `project_board_selector` | Clickable card that triggers the project selection dropdown. |
-| **Project Board Progress** | `board_progress_card` | Card displaying dynamic project progress metrics. |
-| **Import Milestones** | `import_mentor_milestones_btn` | Action button to parse and import matched mentor milestones as board tasks. |
-| **Create Task Button** | `add_board_task_btn` | Opens the Add Task dialog. |
-| **Submit Board Task** | `submit_board_task_btn` | Creates a new task and registers it under the active project. |
-| **Task Card** | `task_card_<id>` | Container displaying individual task details. |
-| **Task Status Toggle** | `task_checkbox_<id>` | Checkbox that registers task completion and awards XP. |
-| **Delete Task Button** | `delete_task_btn_<id>` | Deletes task from active workspace. |
-| **Tab: AI Tutor** | `tech_hub_tab_ai_tutor` | Switches active tab to the AI Tutor/Mentor panel. |
-| **Select Project Dropdown** | `tutor_project_dropdown` | Opens dropdown to select one of your tech proposals. |
-| **Persona Selectors** | `persona_chip_<Mentor/BugFixer/Tutor>` | Selects the AI assistant behavior. |
-| **Query Input Field** | `ai_tutor_query_input` | Text field to enter architectural or code questions. |
-| **Code Snippet Input** | `ai_tutor_code_input` | Text area to paste syntax or stack traces. |
-| **Trigger Consultation** | `ai_tutor_synthesize_btn` | Sends inputs to Gemini API for deep analysis. |
-| **Post Analysis to Feed** | `ai_tutor_publish_feed_btn` | Publishes AI advice to the collaborative Project Board feed. |
-| **Unpaid Libraries Tab Toggle**| `academic_tab_unpaid_libraries` | Switches Academic Repository view to Unpaid Libraries. |
-| **Library Card Selector** | `lib_card_<name_prefix>` | Selects an open global collection (arXiv, MIT, etc.). |
-| **Research Topic Input** | `research_topic_input` | Text field to set specific scientific concept/focus. |
-| **Synthesize Brief Button** | `lib_synthesize_btn` | Triggers the AI literature synthesizer. |
-| **Publish Brief Button** | `lib_publish_to_repo_btn` | Saves synthesized textbooks to the public SQLite repository. |
+| **Home: Talent Hub Card** | `home_talent_hub_card` | Navigation card on HomeScreen to open Talent Hub. |
+| **Talent Hub Root** | `talent_hub_screen_root` | Screen container for Standalone Employers & Learners Hub. |
+| **Talent Back Button** | `talent_hub_back_button` | Back arrow returning from Talent Hub to Home. |
+| **Tab: Browse Pool** | `talent_hub_tab_browse_pool` | Tab to search/view directory of candidates. |
+| **Tab: My Profile** | `talent_hub_tab_my_profile` | Tab to register candidate listing and view proposals. |
+| **Talent Search Field** | `talent_pool_search` | Search box for talents directory. |
+| **Candidate Card** | `talent_card_<id>` | Individual candidate card displaying credentials. |
+| **Engage Candidate** | `engage_talent_btn_<id>` | Launches recruiter direct proposal form. |
+| **Submit Proposal** | `submit_engagement_offer_btn` | Sends contract pitch to candidate's inbox. |
+| **Proposal Item** | `inbox_offer_<id>` | Individual received contract offer card. |
+| **Accept Offer** | `accept_offer_btn_<id>` | Changes status of proposal to ACCEPTED. |
+| **Decline Offer** | `decline_offer_btn_<id>` | Changes status of proposal to DECLINED. |
 
 ---
 

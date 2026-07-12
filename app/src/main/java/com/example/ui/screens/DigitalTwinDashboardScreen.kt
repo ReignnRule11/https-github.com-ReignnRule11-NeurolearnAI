@@ -48,6 +48,7 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
     val allDecks by viewModel.allDecks.collectAsStateWithLifecycle()
     val twinAdvice by viewModel.twinGuidanceText.collectAsStateWithLifecycle()
     val isAILoading by viewModel.isAILoading.collectAsStateWithLifecycle()
+    val chatMessages by viewModel.activeChatMessages.collectAsStateWithLifecycle()
 
     var showCustomizerDialog by remember { mutableStateOf(false) }
 
@@ -60,6 +61,7 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
                 viewModel.updateSelectedTwinAvatar(newAvatar)
                 showCustomizerDialog = false
                 viewModel.generateDigitalTwinGuidance()
+                viewModel.startDigitalTwinChat()
             }
         )
     }
@@ -69,6 +71,10 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
         if (twinAdvice == null) {
             viewModel.generateDigitalTwinGuidance()
         }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.startDigitalTwinChat()
     }
 
     val activeAvatar = profile?.selectedTwinAvatar ?: "socratic"
@@ -269,6 +275,166 @@ fun DigitalTwinDashboardScreen(viewModel: MainViewModel) {
                                         lineHeight = 20.sp
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Chat with Digital Twin Conversational Avatar
+            item {
+                var chatInputText by remember { mutableStateOf("") }
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("twin_chat_card"),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Forum,
+                                    contentDescription = "Chat",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Talk with your Twin Avatar",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            IconButton(onClick = { viewModel.clearDigitalTwinChat() }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Clear Chat",
+                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Interact directly with your synchronized mind. Your Digital Twin understands your strengths, weaknesses, learning goals, and progress.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Box displaying chat messages
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(250.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                .padding(8.dp)
+                        ) {
+                            val twinMessages = chatMessages.filter { it.sessionId == "digital_twin_chat" }
+                            if (twinMessages.isEmpty()) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    contentPadding = PaddingValues(4.dp)
+                                ) {
+                                    items(twinMessages) { msg ->
+                                        val isUser = msg.role == "user"
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(
+                                                        RoundedCornerShape(
+                                                            topStart = 12.dp,
+                                                            topEnd = 12.dp,
+                                                            bottomStart = if (isUser) 12.dp else 0.dp,
+                                                            bottomEnd = if (isUser) 0.dp else 12.dp
+                                                        )
+                                                    )
+                                                    .background(
+                                                        if (isUser) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.surfaceVariant
+                                                    )
+                                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                    .widthIn(max = 240.dp)
+                                            ) {
+                                                Text(
+                                                    text = msg.text,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Input field
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = chatInputText,
+                                onValueChange = { chatInputText = it },
+                                placeholder = { Text("Ask your Twin...", fontSize = 13.sp) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .testTag("twin_chat_input"),
+                                shape = RoundedCornerShape(26.dp),
+                                textStyle = MaterialTheme.typography.bodySmall,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                ),
+                                singleLine = true
+                            )
+                            IconButton(
+                                onClick = {
+                                    if (chatInputText.isNotBlank()) {
+                                        viewModel.sendMessageToDigitalTwin(chatInputText)
+                                        chatInputText = ""
+                                    }
+                                },
+                                enabled = chatInputText.isNotBlank(),
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (chatInputText.isNotBlank()) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .testTag("twin_chat_send_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = "Send",
+                                    tint = if (chatInputText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
                     }

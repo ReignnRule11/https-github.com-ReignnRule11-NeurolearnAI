@@ -214,13 +214,6 @@ fun TechHubScreen(viewModel: MainViewModel) {
                 Tab(
                     selected = activeTab == 6,
                     onClick = { activeTab = 6 },
-                    text = { Text("Talent Pool", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
-                    icon = { Icon(Icons.Default.Work, contentDescription = null) },
-                    modifier = Modifier.testTag("tech_hub_tab_talent_pool")
-                )
-                Tab(
-                    selected = activeTab == 7,
-                    onClick = { activeTab = 7 },
                     text = { Text("AI Tutor", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
                     icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
                     modifier = Modifier.testTag("tech_hub_tab_ai_tutor")
@@ -508,9 +501,6 @@ fun TechHubScreen(viewModel: MainViewModel) {
             } else if (activeTab == 5) {
                 // --- PROJECT COLLABORATION & PROGRESS MANAGEMENT BOARD ---
                 ProjectManagementBoardView(viewModel = viewModel)
-            } else if (activeTab == 6) {
-                // --- GLOBAL TALENT HUB & EMPLOYER ENGAGEMENTS ---
-                TalentMarketplaceView(viewModel = viewModel)
             } else {
                 // --- AI TUTOR, MENTOR & BUG FIXER CONSOLE ---
                 AITutorFixerView(viewModel = viewModel)
