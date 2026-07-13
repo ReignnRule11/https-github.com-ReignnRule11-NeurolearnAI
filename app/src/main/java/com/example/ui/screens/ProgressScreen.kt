@@ -68,6 +68,10 @@ fun ProgressScreen(viewModel: MainViewModel) {
     val allFlashcards by viewModel.allFlashcards.collectAsState()
     val allDecks by viewModel.allDecks.collectAsState()
     val studyTasks by viewModel.studyTasks.collectAsState()
+    
+    val activeRecallSessions by viewModel.activeRecallSessions.collectAsState()
+    val verbalRecallEvaluations by viewModel.verbalRecallEvaluations.collectAsState()
+    val dailyStudyProgressLogs by viewModel.dailyStudyProgressLogs.collectAsState()
 
     // Calculations
     val averageUnderstanding = if (concepts.isNotEmpty()) concepts.map { it.understandingScore }.average().toFloat() else 0.5f
@@ -391,6 +395,24 @@ fun ProgressScreen(viewModel: MainViewModel) {
                 concepts = concepts,
                 studyTasks = studyTasks,
                 allFlashcards = allFlashcards
+            )
+        }
+
+        // Subject Flashcard Completion Progress Dashboard
+        item {
+            SubjectFlashcardProgressDashboard(
+                concepts = concepts,
+                allFlashcards = allFlashcards,
+                allDecks = allDecks
+            )
+        }
+
+        // Persisted Active Recall & Study Progress History Dashboard
+        item {
+            LocalStudyAndActiveRecallHistory(
+                sessions = activeRecallSessions,
+                vocalEvals = verbalRecallEvaluations,
+                progressLogs = dailyStudyProgressLogs
             )
         }
 
@@ -2493,6 +2515,507 @@ fun RechartsCognitiveNetworkChart(concepts: List<ConceptMastery>, viewModel: Mai
                                             color = MaterialTheme.colorScheme.secondary,
                                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                                         )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SubjectFlashcardProgressDashboard(
+    concepts: List<ConceptMastery>,
+    allFlashcards: List<Flashcard>,
+    allDecks: List<FlashcardDeck>
+) {
+    // Group cards by subject based on concept mapping and deck mapping
+    val subjectProgressList = remember(concepts, allFlashcards, allDecks) {
+        val conceptToSubject = concepts.associate { it.id to it.subject }
+        val deckToSubject = allDecks.associate { it.id to it.subject }
+        
+        // Group flashcards by subject
+        val cardsBySubject = allFlashcards.groupBy { card ->
+            conceptToSubject[card.conceptId] ?: card.deckId?.let { deckToSubject[it] } ?: "General"
+        }
+        
+        // Include all subjects that exist in concepts, decks, or cards
+        val allSubjects = (concepts.map { it.subject } + allDecks.map { it.subject } + cardsBySubject.keys)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+
+        allSubjects.map { subject ->
+            val cards = cardsBySubject[subject] ?: emptyList()
+            val totalCards = cards.size
+            val completedCards = cards.count { it.repetitions > 0 || it.lastReviewed > 0L }
+            val progress = if (totalCards > 0) completedCards.toFloat() / totalCards.toFloat() else 0f
+            
+            SubjectProgressItem(
+                subject = subject,
+                totalCards = totalCards,
+                completedCards = completedCards,
+                progress = progress
+            )
+        }
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .testTag("subject_flashcard_progress_card")
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.LibraryBooks,
+                        contentDescription = "Subject Progress",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Subject Completion Dashboard",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Learning progress based on flashcard completions",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            if (subjectProgressList.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No subjects or flashcards available.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    subjectProgressList.forEach { item ->
+                        val subjectColor = when (item.subject.lowercase()) {
+                            "calculus" -> MaterialTheme.colorScheme.primary
+                            "computer science" -> MaterialTheme.colorScheme.secondary
+                            "chemistry" -> Color(0xFF4CAF50)
+                            "product management" -> Color(0xFF9C27B0)
+                            "software development" -> Color(0xFF2196F3)
+                            "web3 & blockchain" -> Color(0xFF00BCD4)
+                            "e-commerce" -> Color(0xFFFF5722)
+                            "business analysis" -> Color(0xFF607D8B)
+                            "product design" -> Color(0xFFE91E63)
+                            "project management" -> Color(0xFFFF9800)
+                            "digital marketing" -> Color(0xFF3F51B5)
+                            "data analysis" -> Color(0xFF009688)
+                            else -> MaterialTheme.colorScheme.tertiary
+                        }
+
+                        val subjectIcon = when (item.subject.lowercase()) {
+                            "calculus" -> Icons.Default.Functions
+                            "computer science" -> Icons.Default.Code
+                            "chemistry" -> Icons.Default.Science
+                            "product management" -> Icons.Default.Star
+                            "software development" -> Icons.Default.Build
+                            "web3 & blockchain" -> Icons.Default.Lock
+                            "e-commerce" -> Icons.Default.ShoppingCart
+                            "business analysis" -> Icons.Default.TrendingUp
+                            "product design" -> Icons.Default.Palette
+                            "project management" -> Icons.Default.Assignment
+                            "digital marketing" -> Icons.Default.Send
+                            "data analysis" -> Icons.Default.Assessment
+                            else -> Icons.Default.Book
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth().testTag("subject_progress_row_${item.subject.replace(" ", "_")}")) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = subjectIcon,
+                                        contentDescription = item.subject,
+                                        tint = subjectColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = item.subject,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = "${item.completedCards} / ${item.totalCards} cards (${(item.progress * 100).toInt()}%)",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = if (item.progress >= 1.0f) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                progress = { item.progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .testTag("subject_progress_bar_${item.subject.replace(" ", "_")}"),
+                                color = subjectColor,
+                                trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class SubjectProgressItem(
+    val subject: String,
+    val totalCards: Int,
+    val completedCards: Int,
+    val progress: Float
+)
+
+@Composable
+fun LocalStudyAndActiveRecallHistory(
+    sessions: List<com.example.data.ActiveRecallSession>,
+    vocalEvals: List<com.example.data.VerbalRecallEvaluation>,
+    progressLogs: List<com.example.data.DailyStudyProgress>
+) {
+    var activeTab by remember { mutableStateOf(0) } // 0 = Sessions, 1 = Vocal Recall, 2 = Daily Logs
+    
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .testTag("local_study_history_card")
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.History,
+                    contentDescription = "Recall History",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Memory Archive & Progress Logs",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Your persisted active recall and study telemetry",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Tab Row
+            TabRow(
+                selectedTabIndex = activeTab,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Tab(
+                    selected = activeTab == 0,
+                    onClick = { activeTab = 0 },
+                    text = { Text("Sessions (${sessions.size})", style = MaterialTheme.typography.labelMedium) }
+                )
+                Tab(
+                    selected = activeTab == 1,
+                    onClick = { activeTab = 1 },
+                    text = { Text("Vocal (${vocalEvals.size})", style = MaterialTheme.typography.labelMedium) }
+                )
+                Tab(
+                    selected = activeTab == 2,
+                    onClick = { activeTab = 2 },
+                    text = { Text("Daily Logs (${progressLogs.size})", style = MaterialTheme.typography.labelMedium) }
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            when (activeTab) {
+                0 -> { // Sessions Tab
+                    if (sessions.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No active recall sessions completed yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            sessions.take(10).forEach { session ->
+                                var isExpanded by remember { mutableStateOf(false) }
+                                val sdf = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault())
+                                val formattedDate = sdf.format(Date(session.timestamp))
+                                
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth().clickable { isExpanded = !isExpanded }
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = session.deckName,
+                                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = formattedDate,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text(
+                                                    text = "${session.averageScore.roundToInt()}% Score",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                                    color = if (session.averageScore >= 75f) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = "${session.easyCount + session.goodCount + session.hardCount} cards",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Text("🟢 ${session.easyCount} Easy", style = MaterialTheme.typography.labelSmall)
+                                            Text("🟡 ${session.goodCount} Good", style = MaterialTheme.typography.labelSmall)
+                                            Text("🔴 ${session.hardCount} Hard", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        
+                                        if (isExpanded) {
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "Digital Twin Analysis:",
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = session.summaryText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                1 -> { // Vocal Recall Tab
+                    if (vocalEvals.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No vocal/spoken recall sessions graded yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            vocalEvals.take(10).forEach { eval ->
+                                val sdf = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault())
+                                val formattedDate = sdf.format(Date(eval.timestamp))
+                                
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Question: ${eval.question}",
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "${eval.score}%",
+                                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.ExtraBold),
+                                                color = when {
+                                                    eval.score >= 75 -> Color(0xFF4CAF50)
+                                                    eval.score >= 40 -> Color(0xFFFFB300)
+                                                    else -> MaterialTheme.colorScheme.error
+                                                }
+                                            )
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "Spoken: \"${eval.spokenAnswer}\"",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Expected: \"${eval.expectedAnswer}\"",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        
+                                        Text(
+                                            text = "Socratic Feedback:",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                        Text(
+                                            text = eval.feedback,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = formattedDate,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            textAlign = TextAlign.End
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                2 -> { // Daily Logs Tab
+                    if (progressLogs.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No daily study progress recorded yet today.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            progressLogs.take(7).forEach { log ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = log.dateKey,
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "+${log.xpGained} XP",
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
+                                                color = Color(0xFF4CAF50)
+                                            )
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text("Cards Reviewed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("${log.cardsReviewed}", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                                            }
+                                            Column {
+                                                Text("Quizzes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("${log.quizzesCompleted}", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                                            }
+                                            Column {
+                                                Text("Est. Study Time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("${log.studyMinutes} mins", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                                            }
+                                        }
                                     }
                                 }
                             }

@@ -119,7 +119,79 @@ data class StudyTask(
     val taskType: String = "concept" // "concept", "deck", "custom"
 )
 
+@Entity(tableName = "active_recall_sessions")
+data class ActiveRecallSession(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val deckId: String?,
+    val deckName: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val easyCount: Int,
+    val goodCount: Int,
+    val hardCount: Int,
+    val averageScore: Float, // 0.0f to 100.0f
+    val summaryText: String
+)
+
+@Entity(tableName = "verbal_recall_evaluations")
+data class VerbalRecallEvaluation(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val cardId: Int,
+    val deckId: String?,
+    val question: String,
+    val expectedAnswer: String,
+    val spokenAnswer: String,
+    val score: Int, // 0 to 100
+    val feedback: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "daily_study_progress")
+data class DailyStudyProgress(
+    @PrimaryKey val dateKey: String, // e.g. "2026-07-13"
+    val timestamp: Long = System.currentTimeMillis(),
+    val cardsReviewed: Int = 0,
+    val quizzesCompleted: Int = 0,
+    val xpGained: Int = 0,
+    val studyMinutes: Int = 0
+)
+
 // --- DAOs ---
+
+@Dao
+interface ActiveRecallSessionDao {
+    @Query("SELECT * FROM active_recall_sessions ORDER BY timestamp DESC")
+    fun getAllSessions(): Flow<List<ActiveRecallSession>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSession(session: ActiveRecallSession)
+
+    @Query("DELETE FROM active_recall_sessions WHERE id = :id")
+    suspend fun deleteSession(id: Int)
+}
+
+@Dao
+interface VerbalRecallEvaluationDao {
+    @Query("SELECT * FROM verbal_recall_evaluations ORDER BY timestamp DESC")
+    fun getAllEvaluations(): Flow<List<VerbalRecallEvaluation>>
+
+    @Query("SELECT * FROM verbal_recall_evaluations WHERE deckId = :deckId ORDER BY timestamp DESC")
+    fun getEvaluationsForDeck(deckId: String): Flow<List<VerbalRecallEvaluation>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEvaluation(evaluation: VerbalRecallEvaluation)
+}
+
+@Dao
+interface DailyStudyProgressDao {
+    @Query("SELECT * FROM daily_study_progress WHERE dateKey = :dateKey LIMIT 1")
+    suspend fun getProgressForDate(dateKey: String): DailyStudyProgress?
+
+    @Query("SELECT * FROM daily_study_progress ORDER BY timestamp DESC")
+    fun getAllProgressLogs(): Flow<List<DailyStudyProgress>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateProgress(progress: DailyStudyProgress)
+}
 
 @Dao
 interface LearnerProfileDao {
@@ -257,9 +329,12 @@ interface StudyTaskDao {
         TalentProfile::class,
         TalentEngagement::class,
         GlobalInternship::class,
-        InternshipPlacement::class
+        InternshipPlacement::class,
+        ActiveRecallSession::class,
+        VerbalRecallEvaluation::class,
+        DailyStudyProgress::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -288,6 +363,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun talentEngagementDao(): TalentEngagementDao
     abstract fun globalInternshipDao(): GlobalInternshipDao
     abstract fun internshipPlacementDao(): InternshipPlacementDao
+    abstract fun activeRecallSessionDao(): ActiveRecallSessionDao
+    abstract fun verbalRecallEvaluationDao(): VerbalRecallEvaluationDao
+    abstract fun dailyStudyProgressDao(): DailyStudyProgressDao
 
     companion object {
         @Volatile

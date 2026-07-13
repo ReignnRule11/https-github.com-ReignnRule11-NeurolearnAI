@@ -54,7 +54,7 @@ sealed interface Screen {
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val TAG = "MainViewModel"
     private val database = AppDatabase.getDatabase(application)
-    val firestoreManager = FirestoreManager()
+    val firestoreManager = FirestoreManager(application)
     
     // DAOs
     private val profileDao = database.learnerProfileDao()
@@ -82,8 +82,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val talentEngagementDao = database.talentEngagementDao()
     private val globalInternshipDao = database.globalInternshipDao()
     private val internshipPlacementDao = database.internshipPlacementDao()
+    private val activeRecallSessionDao = database.activeRecallSessionDao()
+    private val verbalRecallEvaluationDao = database.verbalRecallEvaluationDao()
+    private val dailyStudyProgressDao = database.dailyStudyProgressDao()
 
     // --- State Flows ---
+
+    val activeRecallSessions: StateFlow<List<ActiveRecallSession>> = activeRecallSessionDao.getAllSessions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val verbalRecallEvaluations: StateFlow<List<VerbalRecallEvaluation>> = verbalRecallEvaluationDao.getAllEvaluations()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val dailyStudyProgressLogs: StateFlow<List<DailyStudyProgress>> = dailyStudyProgressDao.getAllProgressLogs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val globalInternships: StateFlow<List<GlobalInternship>> = globalInternshipDao.getAllInternships()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -251,14 +263,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isGeneratingSummary.value = true
             _activeRecallSummary.value = null
+            var summary = ""
             try {
-                val summary = GeminiClient.generateActiveRecallSummary(deckName, results)
+                summary = GeminiClient.generateActiveRecallSummary(deckName, results)
                 _activeRecallSummary.value = summary
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Error generating session summary", e)
                 showToast("Failed to generate summary: ${e.message}")
+                summary = "Completed active recall review of $deckName. Review cards: ${results.size} total."
+                _activeRecallSummary.value = summary
             } finally {
                 _isGeneratingSummary.value = false
+                
+                // Save the completed session to the local Room database!
+                val easyCount = results.count { it.rating == 3 }
+                val goodCount = results.count { it.rating == 2 }
+                val hardCount = results.count { it.rating == 1 }
+                val avgScore = if (results.isNotEmpty()) {
+                    results.map { if (it.rating == 3) 100f else if (it.rating == 2) 66f else 33f }.average().toFloat()
+                } else 0f
+                
+                // Try to resolve deckId
+                val resolvedDeckId = allDecks.value.find { it.name.lowercase() == deckName.lowercase() }?.id ?: "default"
+                
+                val session = ActiveRecallSession(
+                    deckId = resolvedDeckId,
+                    deckName = deckName,
+                    easyCount = easyCount,
+                    goodCount = goodCount,
+                    hardCount = hardCount,
+                    averageScore = avgScore,
+                    summaryText = summary.ifBlank { "Session completed with ${results.size} cards." }
+                )
+                
+                activeRecallSessionDao.insertSession(session)
+                
+                // Increment study minutes
+                logDailyProgress(minutesIncrement = (results.size / 2).coerceIn(2, 15))
             }
         }
     }
@@ -1226,7 +1267,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     weeklyGoalProgress = newWeeklyProgress
                 )
             )
+
+            // Persist the daily study progress log locally
+            logDailyProgress(
+                cardsIncrement = if (incrementCardsReviewed) 1 else 0,
+                quizzesIncrement = if (incrementQuizzesCompleted) 1 else 0,
+                xpIncrement = amount,
+                minutesIncrement = 0
+            )
         }
+    }
+
+    fun insertActiveRecallSession(session: ActiveRecallSession) {
+        viewModelScope.launch {
+            activeRecallSessionDao.insertSession(session)
+        }
+    }
+
+    fun insertVerbalEvaluation(evaluation: VerbalRecallEvaluation) {
+        viewModelScope.launch {
+            verbalRecallEvaluationDao.insertEvaluation(evaluation)
+        }
+    }
+
+    fun logDailyProgress(
+        cardsIncrement: Int = 0,
+        quizzesIncrement: Int = 0,
+        xpIncrement: Int = 0,
+        minutesIncrement: Int = 0,
+        dateKey: String = getCurrentDateKey()
+    ) {
+        viewModelScope.launch {
+            val existing = dailyStudyProgressDao.getProgressForDate(dateKey)
+            if (existing != null) {
+                val updated = existing.copy(
+                    cardsReviewed = existing.cardsReviewed + cardsIncrement,
+                    quizzesCompleted = existing.quizzesCompleted + quizzesIncrement,
+                    xpGained = existing.xpGained + xpIncrement,
+                    studyMinutes = existing.studyMinutes + minutesIncrement
+                )
+                dailyStudyProgressDao.insertOrUpdateProgress(updated)
+            } else {
+                val newLog = DailyStudyProgress(
+                    dateKey = dateKey,
+                    cardsReviewed = cardsIncrement,
+                    quizzesCompleted = quizzesIncrement,
+                    xpGained = xpIncrement,
+                    studyMinutes = minutesIncrement
+                )
+                dailyStudyProgressDao.insertOrUpdateProgress(newLog)
+            }
+        }
+    }
+
+    private fun getCurrentDateKey(): String {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        return sdf.format(java.util.Date())
     }
 
     fun setDailyGoal(type: String, target: Int) {

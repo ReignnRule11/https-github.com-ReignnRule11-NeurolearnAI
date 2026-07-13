@@ -92,51 +92,84 @@ fun ReviewScreen(viewModel: MainViewModel) {
     var showCreateDeckDialog by remember { mutableStateOf(false) }
     var showAddCardDialog by remember { mutableStateOf(false) }
     var showMindMapDialog by remember { mutableStateOf(false) }
+    var activeTab by remember { mutableStateOf(0) } // 0 = Local storage, 1 = Firestore live sync
     
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (selectedDeckId == null) {
-            DecksDashboard(
-                decks = allDecks,
-                allCards = allCards,
-                onCreateDeckClick = { showCreateDeckDialog = true },
-                onDeckSelect = { selectedDeckId = it },
-                onSyncClick = { viewModel.syncDecksAndCardsToFirestore() },
-                onPullClick = { viewModel.pullDecksAndCardsFromFirestore() },
-                onShowMindMap = {
-                    viewModel.generateMindMapForDeck("All Concepts", null)
-                    showMindMapDialog = true
-                },
-                onDeleteCard = { viewModel.deleteFlashcard(it) }
-            )
-        } else {
-            val deck = allDecks.find { it.id == selectedDeckId } ?: allDecks.firstOrNull { it.id == "default" }
-            if (deck == null) {
-                selectedDeckId = null
-            } else {
-                DeckDetailAndStudyView(
-                    deck = deck,
-                    allCards = allCards,
-                    viewModel = viewModel,
-                    onBack = { selectedDeckId = null },
-                    onAddCardClick = { showAddCardDialog = true },
-                    onDeleteDeck = {
-                        viewModel.deleteDeck(deck.id)
-                        selectedDeckId = null
-                    },
-                    onShowMindMap = {
-                        viewModel.generateMindMapForDeck(deck.name, deck.id)
-                        showMindMapDialog = true
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (selectedDeckId == null) {
+                TabRow(
+                    selectedTabIndex = activeTab,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Tab(
+                        selected = activeTab == 0,
+                        onClick = { activeTab = 0 },
+                        text = { Text("Local Study Hub", fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.Storage, contentDescription = "Local storage") },
+                        modifier = Modifier.testTag("local_tab")
+                    )
+                    Tab(
+                        selected = activeTab == 1,
+                        onClick = { activeTab = 1 },
+                        text = { Text("Firestore Cloud Hub", fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.CloudSync, contentDescription = "Firestore sync") },
+                        modifier = Modifier.testTag("firestore_tab")
+                    )
+                }
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                if (activeTab == 0) {
+                    if (selectedDeckId == null) {
+                        DecksDashboard(
+                            decks = allDecks,
+                            allCards = allCards,
+                            onCreateDeckClick = { showCreateDeckDialog = true },
+                            onDeckSelect = { selectedDeckId = it },
+                            onSyncClick = { viewModel.syncDecksAndCardsToFirestore() },
+                            onPullClick = { viewModel.pullDecksAndCardsFromFirestore() },
+                            onShowMindMap = {
+                                viewModel.generateMindMapForDeck("All Concepts", null)
+                                showMindMapDialog = true
+                            },
+                            onDeleteCard = { viewModel.deleteFlashcard(it) }
+                        )
+                    } else {
+                        val deck = allDecks.find { it.id == selectedDeckId } ?: allDecks.firstOrNull { it.id == "default" }
+                        if (deck == null) {
+                            selectedDeckId = null
+                        } else {
+                            DeckDetailAndStudyView(
+                                deck = deck,
+                                allCards = allCards,
+                                viewModel = viewModel,
+                                onBack = { selectedDeckId = null },
+                                onAddCardClick = { showAddCardDialog = true },
+                                onDeleteDeck = {
+                                    viewModel.deleteDeck(deck.id)
+                                    selectedDeckId = null
+                                },
+                                onShowMindMap = {
+                                    viewModel.generateMindMapForDeck(deck.name, deck.id)
+                                    showMindMapDialog = true
+                                }
+                            )
+                        }
                     }
-                )
+                } else {
+                    FirestoreLiveHub(viewModel = viewModel)
+                }
             }
         }
         
         // Mind Map Dialog Overlay
-        if (showMindMapDialog) {
+        if (showMindMapDialog && activeTab == 0) {
             MindMapDialog(
                 viewModel = viewModel,
                 onDismiss = { showMindMapDialog = false }
@@ -144,7 +177,7 @@ fun ReviewScreen(viewModel: MainViewModel) {
         }
         
         // Create Deck Dialog
-        if (showCreateDeckDialog) {
+        if (showCreateDeckDialog && activeTab == 0) {
             CreateDeckDialog(
                 onDismiss = { showCreateDeckDialog = false },
                 onCreate = { name, desc, subject ->
@@ -155,7 +188,7 @@ fun ReviewScreen(viewModel: MainViewModel) {
         }
         
         // Add Flashcard Dialog
-        if (showAddCardDialog && selectedDeckId != null) {
+        if (showAddCardDialog && selectedDeckId != null && activeTab == 0) {
             AddFlashcardDialog(
                 onDismiss = { showAddCardDialog = false },
                 onAdd = { question, answer, diff, tags ->
@@ -2545,10 +2578,22 @@ fun ActiveStudySession(
                                                     if (spokenAnswer.isNotBlank()) {
                                                         isEvaluating = true
                                                         scope.launch {
-                                                            evaluationResult = evaluateVerbalAnswerWithGemini(
+                                                            val evalResult1 = evaluateVerbalAnswerWithGemini(
                                                                 spoken = spokenAnswer,
                                                                 expected = currentCard.answer,
                                                                 question = currentCard.question
+                                                            )
+                                                            evaluationResult = evalResult1
+                                                            viewModel.insertVerbalEvaluation(
+                                                                com.example.data.VerbalRecallEvaluation(
+                                                                    cardId = currentCard.id,
+                                                                    deckId = currentCard.deckId,
+                                                                    question = currentCard.question,
+                                                                    expectedAnswer = currentCard.answer,
+                                                                    spokenAnswer = spokenAnswer,
+                                                                    score = evalResult1.score,
+                                                                    feedback = evalResult1.feedback
+                                                                )
                                                             )
                                                             isEvaluating = false
                                                             isAnswerRevealed = true
@@ -2615,10 +2660,22 @@ fun ActiveStudySession(
                                                         onClick = {
                                                             isEvaluating = true
                                                             scope.launch {
-                                                                evaluationResult = evaluateVerbalAnswerWithGemini(
+                                                                val evalResult2 = evaluateVerbalAnswerWithGemini(
                                                                     spoken = spokenAnswer,
                                                                     expected = currentCard.answer,
                                                                     question = currentCard.question
+                                                                )
+                                                                evaluationResult = evalResult2
+                                                                viewModel.insertVerbalEvaluation(
+                                                                    com.example.data.VerbalRecallEvaluation(
+                                                                        cardId = currentCard.id,
+                                                                        deckId = currentCard.deckId,
+                                                                        question = currentCard.question,
+                                                                        expectedAnswer = currentCard.answer,
+                                                                        spokenAnswer = spokenAnswer,
+                                                                        score = evalResult2.score,
+                                                                        feedback = evalResult2.feedback
+                                                                    )
                                                                 )
                                                                 isEvaluating = false
                                                                 isAnswerRevealed = true
@@ -4658,6 +4715,998 @@ fun InlineChatBubble(message: ChatMessage, twinAvatar: String) {
                 color = if (isUser) MaterialTheme.colorScheme.onPrimary
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+fun FirestoreLiveHub(viewModel: MainViewModel) {
+    val firestoreDecks by viewModel.firestoreManager.decks.collectAsState()
+    val firestoreCardsMap by viewModel.firestoreManager.cardsMap.collectAsState()
+    val isFirestoreActive by viewModel.firestoreManager.isFirestoreActive.collectAsState()
+    val userProfile by viewModel.profile.collectAsState()
+    val userId = userProfile?.id ?: "user_default"
+
+    var selectedDeckId by remember { mutableStateOf<String?>(null) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var showAddCardDialog by remember { mutableStateOf(false) }
+    var isStudying by remember { mutableStateOf(false) }
+    var studyAllMode by remember { mutableStateOf(false) }
+
+    val currentDeck = firestoreDecks.find { it.id == selectedDeckId }
+
+    if (isStudying && selectedDeckId != null && currentDeck != null) {
+        val allDeckCards = firestoreCardsMap[selectedDeckId] ?: emptyList()
+        val cardsToStudy = if (studyAllMode) allDeckCards else allDeckCards.filter { it.nextReviewDate <= System.currentTimeMillis() }
+
+        FirestoreStudySession(
+            deckId = selectedDeckId!!,
+            deckName = currentDeck.name,
+            cards = cardsToStudy,
+            viewModel = viewModel,
+            onQuit = { isStudying = false }
+        )
+    } else if (selectedDeckId != null && currentDeck != null) {
+        val deckCards = firestoreCardsMap[selectedDeckId] ?: emptyList()
+        FirestoreDeckDetailView(
+            deck = currentDeck,
+            cards = deckCards,
+            viewModel = viewModel,
+            onBack = { selectedDeckId = null },
+            onAddCardClick = { showAddCardDialog = true },
+            onStartStudy = { studyAll ->
+                studyAllMode = studyAll
+                isStudying = true
+            },
+            onDeleteDeck = {
+                viewModel.firestoreManager.deleteDeck(selectedDeckId!!, {
+                    selectedDeckId = null
+                }, {
+                    // handle error
+                })
+            }
+        )
+
+        if (showAddCardDialog) {
+            AddFirestoreCardDialog(
+                onDismiss = { showAddCardDialog = false },
+                onAdd = { q, a ->
+                    viewModel.firestoreManager.addCardToDeck(selectedDeckId!!, q, a, {
+                        showAddCardDialog = false
+                    }, {
+                        // handle error
+                    })
+                }
+            )
+        }
+    } else {
+        // Main live hub lists
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                // Connection Status Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isFirestoreActive) 
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) 
+                        else 
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(
+                        1.dp, 
+                        if (isFirestoreActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) 
+                        else MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isFirestoreActive) Icons.Default.CloudSync else Icons.Default.CloudOff,
+                            contentDescription = "Firestore Status",
+                            tint = if (isFirestoreActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Column {
+                            Text(
+                                text = if (isFirestoreActive) "Direct Firestore Sync Active" else "Firestore Offline Fallback",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isFirestoreActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = if (isFirestoreActive) 
+                                    "Your terms are updated instantly in Google Cloud Firestore with real-time replication." 
+                                else 
+                                    "Running locally in sandbox mode. Progress will sync once cloud connection is verified.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isFirestoreActive) 
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) 
+                                else 
+                                    MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Cloud Collections",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+
+                    Button(
+                        onClick = { showCreateDialog = true },
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Create", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("New Collection", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            if (firestoreDecks.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderZip,
+                                    contentDescription = "Empty",
+                                    tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(64.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "No Cloud Collections Yet",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Create a custom subject-specific term deck to start training with SM-2 Spaced Repetition.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                items(firestoreDecks) { deck ->
+                    val deckCards = firestoreCardsMap[deck.id] ?: emptyList()
+                    val dueCount = deckCards.count { it.nextReviewDate <= System.currentTimeMillis() }
+
+                    FirestoreDeckItem(
+                        deck = deck,
+                        totalCards = deckCards.size,
+                        dueCards = dueCount,
+                        onClick = { selectedDeckId = deck.id }
+                    )
+                }
+            }
+        }
+
+        if (showCreateDialog) {
+            CreateFirestoreDeckDialog(
+                onDismiss = { showCreateDialog = false },
+                onCreate = { name, desc ->
+                    viewModel.firestoreManager.createDeck(userId, name, desc, {
+                        showCreateDialog = false
+                    }, {
+                        // handle error
+                    })
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun FirestoreDeckItem(
+    deck: FirestoreDeck,
+    totalCards: Int,
+    dueCards: Int,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .testTag("firestore_deck_item_${deck.id}"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Cloud,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = deck.name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (deck.description.isNotBlank()) {
+                    Text(
+                        text = deck.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SuggestionChip(
+                        onClick = {},
+                        label = { Text("$totalCards terms", style = MaterialTheme.typography.labelSmall) },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        ),
+                        border = BorderStroke(0.dp, Color.Transparent)
+                    )
+
+                    if (dueCards > 0) {
+                        SuggestionChip(
+                            onClick = {},
+                            label = { Text("$dueCards due", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                            ),
+                            border = BorderStroke(0.dp, Color.Transparent)
+                        )
+                    } else {
+                        SuggestionChip(
+                            onClick = {},
+                            label = { Text("All reviewed", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50)) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = Color(0xFF4CAF50).copy(alpha = 0.15f)
+                            ),
+                            border = BorderStroke(0.dp, Color.Transparent)
+                        )
+                    }
+                }
+            }
+
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "View Deck",
+                tint = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}
+
+@Composable
+fun FirestoreDeckDetailView(
+    deck: FirestoreDeck,
+    cards: List<FirestoreFlashcard>,
+    viewModel: MainViewModel,
+    onBack: () -> Unit,
+    onAddCardClick: () -> Unit,
+    onStartStudy: (Boolean) -> Unit,
+    onDeleteDeck: () -> Unit
+) {
+    val dueCards = cards.filter { it.nextReviewDate <= System.currentTimeMillis() }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // Back Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+            
+            IconButton(
+                onClick = onDeleteDeck,
+                colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete Collection")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Title and Description
+        Text(
+            text = deck.name,
+            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        if (deck.description.isNotBlank()) {
+            Text(
+                text = deck.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Study action triggers
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = { onStartStudy(false) },
+                enabled = dueCards.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Study Due (${dueCards.size})")
+            }
+
+            OutlinedButton(
+                onClick = { onStartStudy(true) },
+                enabled = cards.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Study All (${cards.size})")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Terms header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Subject Terms (${cards.size})",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            TextButton(onClick = onAddCardClick) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Term")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (cards.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.MenuBook,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "No subject terms defined.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(cards) { card ->
+                    var isExpanded by remember { mutableStateOf(false) }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isExpanded = !isExpanded },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = card.question,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = "Expand",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            
+                            if (isExpanded) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                )
+                                Text(
+                                    text = card.answer,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Repetitions: ${card.repetitions}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        text = "•",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        text = "Interval: ${card.intervalDays} days",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        text = "•",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    val dueText = if (card.nextReviewDate <= System.currentTimeMillis()) "Due Now" else "Next review in ${((card.nextReviewDate - System.currentTimeMillis()) / (24 * 3600 * 1000L)).coerceAtLeast(1)} days"
+                                    Text(
+                                        text = dueText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (card.nextReviewDate <= System.currentTimeMillis()) MaterialTheme.colorScheme.error else Color(0xFF4CAF50)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FirestoreStudySession(
+    deckId: String,
+    deckName: String,
+    cards: List<FirestoreFlashcard>,
+    viewModel: MainViewModel,
+    onQuit: () -> Unit
+) {
+    var currentCardIndex by remember { mutableStateOf(0) }
+    var isAnswerRevealed by remember { mutableStateOf(false) }
+    var showResultsSummary by remember { mutableStateOf(false) }
+    
+    val ratedCounts = remember { mutableMapOf<Int, Int>(1 to 0, 2 to 0, 3 to 0) } // rating to count
+
+    if (cards.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(64.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "All caught up!",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = "There are no due cards in this collection. Select 'Study All' to study terms anyway.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = onQuit, shape = RoundedCornerShape(12.dp)) {
+                    Text("Return to Deck")
+                }
+            }
+        }
+        return
+    }
+
+    if (showResultsSummary) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EmojiEvents,
+                        contentDescription = "Success",
+                        tint = Color(0xFFFFB300),
+                        modifier = Modifier.size(72.dp)
+                    )
+                    
+                    Text(
+                        text = "Session Complete!",
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    Text(
+                        text = "You've successfully completed active recall training for $deckName.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Hard", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE53935))
+                            Text("${ratedCounts[1] ?: 0}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Good", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFB300))
+                            Text("${ratedCounts[2] ?: 0}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Easy", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
+                            Text("${ratedCounts[3] ?: 0}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = onQuit,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Finish Study")
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    val currentCard = cards[currentCardIndex]
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Header progress
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onQuit) {
+                Icon(Icons.Default.Close, contentDescription = "Close Study Session")
+            }
+            Text(
+                text = "${currentCardIndex + 1} / ${cards.size}",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // Empty space to balance close button
+            Spacer(modifier = Modifier.width(48.dp))
+        }
+
+        LinearProgressIndicator(
+            progress = { (currentCardIndex + 1).toFloat() / cards.size },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+
+        // Flashcard container
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(vertical = 24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+                    .clickable { isAnswerRevealed = !isAnswerRevealed },
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isAnswerRevealed) 
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.15f) 
+                    else 
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = if (isAnswerRevealed) "REVEALED ANSWER" else "QUESTION/CONCEPT",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = if (isAnswerRevealed) currentCard.answer else currentCard.question,
+                        style = MaterialTheme.typography.titleLarge.copy(lineHeight = 30.sp, fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    if (!isAnswerRevealed) {
+                        Text(
+                            text = "Tap Card to Reveal Answer",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+
+        // Active Recall Grading Panel
+        Box(modifier = Modifier.fillMaxWidth().height(80.dp)) {
+            if (isAnswerRevealed) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Hard Button
+                    Button(
+                        onClick = {
+                            ratedCounts[1] = (ratedCounts[1] ?: 0) + 1
+                            viewModel.firestoreManager.updateCardReview(deckId, currentCard, 1, {}, {})
+                            if (currentCardIndex + 1 < cards.size) {
+                                currentCardIndex++
+                                isAnswerRevealed = false
+                            } else {
+                                showResultsSummary = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.SentimentVeryDissatisfied, contentDescription = "Hard")
+                            Text("Again (Hard)", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+
+                    // Good Button
+                    Button(
+                        onClick = {
+                            ratedCounts[2] = (ratedCounts[2] ?: 0) + 1
+                            viewModel.firestoreManager.updateCardReview(deckId, currentCard, 2, {}, {})
+                            if (currentCardIndex + 1 < cards.size) {
+                                currentCardIndex++
+                                isAnswerRevealed = false
+                            } else {
+                                showResultsSummary = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB300)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.SentimentNeutral, contentDescription = "Good")
+                            Text("Good", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+
+                    // Easy Button
+                    Button(
+                        onClick = {
+                            ratedCounts[3] = (ratedCounts[3] ?: 0) + 1
+                            viewModel.firestoreManager.updateCardReview(deckId, currentCard, 3, {}, {})
+                            if (currentCardIndex + 1 < cards.size) {
+                                currentCardIndex++
+                                isAnswerRevealed = false
+                            } else {
+                                showResultsSummary = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.SentimentSatisfiedAlt, contentDescription = "Easy")
+                            Text("Easy", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            } else {
+                Button(
+                    onClick = { isAnswerRevealed = true },
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.Visibility, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reveal Answer", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateFirestoreDeckDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var nameError by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "New Firestore Collection",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        if (it.isNotBlank()) nameError = false
+                    },
+                    label = { Text("Collection Name (e.g. Physiology)") },
+                    isError = nameError,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (Optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (name.isBlank()) {
+                                nameError = true
+                            } else {
+                                onCreate(name, description)
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Create")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AddFirestoreCardDialog(
+    onDismiss: () -> Unit,
+    onAdd: (String, String) -> Unit
+) {
+    var question by remember { mutableStateOf("") }
+    var answer by remember { mutableStateOf("") }
+    var qError by remember { mutableStateOf(false) }
+    var aError by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Add Subject Term",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                OutlinedTextField(
+                    value = question,
+                    onValueChange = {
+                        question = it
+                        if (it.isNotBlank()) qError = false
+                    },
+                    label = { Text("Concept / Question") },
+                    isError = qError,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = answer,
+                    onValueChange = {
+                        answer = it
+                        if (it.isNotBlank()) aError = false
+                    },
+                    label = { Text("Definition / Answer") },
+                    isError = aError,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (question.isBlank()) qError = true
+                            if (answer.isBlank()) aError = true
+                            if (question.isNotBlank() && answer.isNotBlank()) {
+                                onAdd(question, answer)
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Add")
+                    }
+                }
+            }
         }
     }
 }
