@@ -13,6 +13,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.GeminiClient
 import com.example.data.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -49,6 +50,7 @@ sealed interface Screen {
     data class TechStudyRoom(val roomId: String) : Screen
     object ExamPartnershipsHub : Screen
     object TalentHub : Screen
+    object VideoIntelligence : Screen
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -85,8 +87,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val activeRecallSessionDao = database.activeRecallSessionDao()
     private val verbalRecallEvaluationDao = database.verbalRecallEvaluationDao()
     private val dailyStudyProgressDao = database.dailyStudyProgressDao()
+    private val videoRecallPackageDao = database.videoRecallPackageDao()
 
     // --- State Flows ---
+
+    val videoRecallPackages: StateFlow<List<VideoRecallPackage>> = videoRecallPackageDao.getAllVideoPackages()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val activeRecallSessions: StateFlow<List<ActiveRecallSession>> = activeRecallSessionDao.getAllSessions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -5167,6 +5173,186 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = paper.copy(associatedProjectId = null)
             researchPaperDao.insertPaper(updated)
             showToast("Unlinked paper from project workspace.")
+        }
+    }
+
+    fun insertVideoPackage(pkg: VideoRecallPackage) {
+        viewModelScope.launch(Dispatchers.IO) {
+            videoRecallPackageDao.insertVideoPackage(pkg)
+        }
+    }
+
+    fun deleteVideoPackage(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            videoRecallPackageDao.deleteVideoPackage(id)
+        }
+    }
+
+    fun analyzeVideoWithGemini(
+        title: String,
+        description: String,
+        url: String,
+        isYoutube: Boolean,
+        category: String,
+        onResult: (VideoRecallPackage?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val prompt = """
+                    You are an expert Educational Technologist and Cognitive Science Researcher.
+                    Please analyze the following technology video:
+                    Title: "$title"
+                    Category Focus: "$category" (e.g. Learning, Engagement, Retention, Creativity, Innovation, Productivity)
+                    Description/Context: "$description"
+                    
+                    Your task is to generate a comprehensive study and retention package as a JSON object.
+                    Ensure the response is a single valid JSON object containing:
+                    {
+                      "title": "A refined, professional learning title for the video",
+                      "category": "$category",
+                      "summary": "A rich 2-paragraph analytical summary of how this technology facilitates human performance, learning, engagement, or productivity.",
+                      "keyTakeaways": [
+                         "Takeaway 1: Actionable tactical point or definition",
+                         "Takeaway 2...",
+                         "Takeaway 3...",
+                         "Takeaway 4...",
+                         "Takeaway 5..."
+                      ],
+                      "socraticQuestions": [
+                         "Deep Socratic question 1 to challenge the student's active understanding",
+                         "Socratic question 2...",
+                         "Socratic question 3..."
+                      ],
+                      "quiz": [
+                        {
+                          "question": "A multiple choice question based on the content?",
+                          "options": ["Option A", "Option B", "Option C", "Option D"],
+                          "correctAnswer": "Exact text of the correct option matching one of the 4 options",
+                          "explanation": "Detailed pedagogical explanation of why this option is correct."
+                        },
+                        ... (exactly 3 questions)
+                      ]
+                    }
+                    
+                    Return ONLY the raw JSON. Do NOT wrap it in markdown. Ensure the JSON is completely valid and parseable.
+                """.trimIndent()
+
+                val resultJson = GeminiClient.generate(prompt)
+                
+                // Clean result from potential markdown wrappers
+                var cleanJson = resultJson.trim()
+                if (cleanJson.startsWith("```")) {
+                    cleanJson = cleanJson.removePrefix("```json").removePrefix("```").trim()
+                }
+                if (cleanJson.endsWith("```")) {
+                    cleanJson = cleanJson.removeSuffix("```").trim()
+                }
+                
+                // Parse the JSON
+                val jsonObj = org.json.JSONObject(cleanJson)
+                val parsedTitle = jsonObj.optString("title", title)
+                val parsedCategory = jsonObj.optString("category", category)
+                val parsedSummary = jsonObj.optString("summary", "Summarized analysis of $title.")
+                
+                val takeawaysArray = jsonObj.optJSONArray("keyTakeaways")
+                val takeawaysList = mutableListOf<String>()
+                if (takeawaysArray != null) {
+                    for (i in 0 until takeawaysArray.length()) {
+                        takeawaysList.add("• " + takeawaysArray.getString(i))
+                    }
+                } else {
+                    takeawaysList.add("• Learn the core mechanics of $title.")
+                }
+                
+                val socraticArray = jsonObj.optJSONArray("socraticQuestions")
+                val socraticList = mutableListOf<String>()
+                if (socraticArray != null) {
+                    for (i in 0 until socraticArray.length()) {
+                        socraticList.add("• " + socraticArray.getString(i))
+                    }
+                } else {
+                    socraticList.add("• How does this technology help you master your current study topics?")
+                }
+                
+                val quizArray = jsonObj.optJSONArray("quiz")
+                val quizString = quizArray?.toString() ?: "[]"
+
+                val pkg = VideoRecallPackage(
+                    title = parsedTitle,
+                    description = description,
+                    videoUrl = url,
+                    isYoutube = isYoutube,
+                    technologyCategory = parsedCategory,
+                    summary = parsedSummary,
+                    keyTakeaways = takeawaysList.joinToString("\n"),
+                    socraticQuestions = socraticList.joinToString("\n"),
+                    quizJson = quizString
+                )
+                
+                // Insert into db
+                videoRecallPackageDao.insertVideoPackage(pkg)
+                
+                // Award XP
+                awardXp(30)
+                showToast("Video analyzed successfully! +30 XP 🧠")
+                onResult(pkg)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Failed to analyze video with Gemini", e)
+                
+                // Fallback local simulated package
+                val pkg = VideoRecallPackage(
+                    title = title,
+                    description = description,
+                    videoUrl = url,
+                    isYoutube = isYoutube,
+                    technologyCategory = category,
+                    summary = "Socratic analysis confirms this technology has high cognitive utility for $category. It leverages optimized user-interface pathways and structured informational layouts to flatten forgetting curves and promote creative retention.",
+                    keyTakeaways = "• Understand the primary design principles behind this technology.\n• Shorten learning feedback loops through consistent daily usage.\n• Map conceptual hierarchies visually to improve retention by up to 40%.\n• Avoid visual clutter to maintain focus on central learning tasks.\n• Pair tool engagement with active recall quizzes for optimal mastery.",
+                    socraticQuestions = "• In what ways does this technology accelerate your personal cognitive performance?\n• How does reducing visual friction improve information processing speeds?\n• Why are frequent feedback checkpoints critical for mastering complex technology tools?",
+                    quizJson = """
+                        [
+                          {
+                            "question": "What is the primary benefit of reducing visual and conceptual friction?",
+                            "options": [
+                              "It decreases cognitive load, letting the brain focus on learning",
+                              "It makes the device runs cooler",
+                              "It is only for aesthetic preferences",
+                              "It replaces the need for any reading"
+                            ],
+                            "correctAnswer": "It decreases cognitive load, letting the brain focus on learning",
+                            "explanation": "Minimal friction allows cognitive energy to be directed entirely toward understanding the material rather than navigating the interface."
+                          },
+                          {
+                            "question": "Why is active, spaced feedback critical for high productivity?",
+                            "options": [
+                              "It validates understanding frequently, preventing error compounding",
+                              "It allows the user to study once a month only",
+                              "It makes tests easier to guess",
+                              "It causes high memory decay rates"
+                            ],
+                            "correctAnswer": "It validates understanding frequently, preventing error compounding",
+                            "explanation": "Short, recurring validation loops identify weaknesses immediately so they can be corrected before bad habits form."
+                          },
+                          {
+                            "question": "Which category of cognitive utility does a Socratic Dialogue Twin belong to?",
+                            "options": [
+                              "Accelerated Learning & Active Retention",
+                              "Static Database Storage",
+                              "Unstructured Graphic Novel Reading",
+                              "Passive Video Streaming Only"
+                            ],
+                            "correctAnswer": "Accelerated Learning & Active Retention",
+                            "explanation": "Dialogue-based engagement prompts cognitive retrieval and reflection, the foundational pillars of active retention."
+                          }
+                        ]
+                    """.trimIndent()
+                )
+                
+                videoRecallPackageDao.insertVideoPackage(pkg)
+                awardXp(20)
+                showToast("Video added (Simulated analysis fallback). +20 XP 💡")
+                onResult(pkg)
+            }
         }
     }
 }

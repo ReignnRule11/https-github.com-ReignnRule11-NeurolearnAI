@@ -155,7 +155,34 @@ data class DailyStudyProgress(
     val studyMinutes: Int = 0
 )
 
+@Entity(tableName = "video_recall_packages")
+data class VideoRecallPackage(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val title: String,
+    val description: String,
+    val videoUrl: String,
+    val isYoutube: Boolean,
+    val technologyCategory: String, // e.g., "Learning", "Retention", "Productivity"
+    val timestamp: Long = System.currentTimeMillis(),
+    val summary: String,
+    val keyTakeaways: String, // newline-separated or comma-separated
+    val socraticQuestions: String, // newline-separated
+    val quizJson: String // JSON representation of 3 questions
+)
+
 // --- DAOs ---
+
+@Dao
+interface VideoRecallPackageDao {
+    @Query("SELECT * FROM video_recall_packages ORDER BY timestamp DESC")
+    fun getAllVideoPackages(): Flow<List<VideoRecallPackage>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVideoPackage(pkg: VideoRecallPackage)
+
+    @Query("DELETE FROM video_recall_packages WHERE id = :id")
+    suspend fun deleteVideoPackage(id: Int)
+}
 
 @Dao
 interface ActiveRecallSessionDao {
@@ -332,12 +359,14 @@ interface StudyTaskDao {
         InternshipPlacement::class,
         ActiveRecallSession::class,
         VerbalRecallEvaluation::class,
-        DailyStudyProgress::class
+        DailyStudyProgress::class,
+        VideoRecallPackage::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun videoRecallPackageDao(): VideoRecallPackageDao
     abstract fun learnerProfileDao(): LearnerProfileDao
     abstract fun conceptMasteryDao(): ConceptMasteryDao
     abstract fun flashcardDao(): FlashcardDao
@@ -481,6 +510,160 @@ abstract class AppDatabase : RoomDatabase() {
 
             // 1. Preseed default learner profile
             db.learnerProfileDao().insertOrUpdateProfile(LearnerProfile())
+
+            // Preseed beautiful default video learning packages
+            db.videoRecallPackageDao().insertVideoPackage(
+                VideoRecallPackage(
+                    id = 1,
+                    title = "Accelerating Cognitive Retention via Socratic Dialogue Twins",
+                    description = "An in-depth guide to using AI Digital Twins configured with customized Socratic questioning to stimulate active recall, expand conceptual depth, and optimize learning efficiency.",
+                    videoUrl = "https://www.youtube.com/watch?v=5Uj9S6_0pB0",
+                    isYoutube = true,
+                    technologyCategory = "Learning",
+                    summary = "Socratic AI Twins act as intelligent dialogue partners that challenge the learner's assumptions rather than simply providing answers. This process triggers deep cognitive processing, converting passive recognition into robust active recall. By forcing the brain to articulate complex technical ideas, neural pathways are strengthened, significantly reducing rate-of-forgetting curves as modeled by the Ebbinghaus Forgetting Curve.",
+                    keyTakeaways = "• Socratic tutoring leverages active synthesis to solidify concept mastery.\n• Dialogue-driven engagement beats passive reading by a factor of 3x.\n• AI twins can personalize the difficulty in real-time, matching the student's cognitive threshold.\n• Active articulation of a technical idea is a direct predictor of exam performance.\n• Pairing Socratic conversation with spaced retrieval yields near-perfect retention over 6-month horizons.",
+                    socraticQuestions = "• In what ways does translating a concept into your own words during a dialogue trigger deeper encoding than highlighting text?\n• How can a Socratic twin recognize when your conceptual understanding is fragmented versus complete?\n• Why does a struggle to formulate an explanation actually serve as a high-value reinforcement mechanism?",
+                    quizJson = """
+                        [
+                          {
+                            "question": "What primary cognitive mechanism makes Socratic dialogue more effective than passive reading?",
+                            "options": [
+                              "Active retrieval and articulation",
+                              "Rote memorization and repetition",
+                              "Visual tracking of text highlights",
+                              "Implicit pattern recognition"
+                            ],
+                            "correctAnswer": "Active retrieval and articulation",
+                            "explanation": "Active retrieval forces the brain to reconstruct neural connections, whereas passive reading relies on simple visual familiarity."
+                          },
+                          {
+                            "question": "How does the Ebbinghaus Forgetting Curve relate to dialogic study?",
+                            "options": [
+                              "It decreases retention if you talk too much",
+                              "Active study loops flatten the curve, keeping recall high",
+                              "It proves that memory is permanent and cannot decay",
+                              "It shows that only visual graphs aid retention"
+                            ],
+                            "correctAnswer": "Active study loops flatten the curve, keeping recall high",
+                            "explanation": "By introducing active spaced retrieval through dialogue, the forgetting curve is flattened, ensuring near-perfect long-term recall."
+                          },
+                          {
+                            "question": "What is a central benefit of an AI twin adjusting difficulty dynamically?",
+                            "options": [
+                              "It prevents study fatigue by keeping learning in the zone of proximal development",
+                              "It ensures that all quizzes are extremely easy to pass",
+                              "It generates static answers that never change",
+                              "It forces the user to log out of the app"
+                            ],
+                            "correctAnswer": "It prevents study fatigue by keeping learning in the zone of proximal development",
+                            "explanation": "Dynamic scaling ensures the learner stays in the optimal challenge zone, balancing engagement without inducing frustration."
+                          }
+                        ]
+                    """.trimIndent()
+                )
+            )
+
+            db.videoRecallPackageDao().insertVideoPackage(
+                VideoRecallPackage(
+                    id = 2,
+                    title = "Continuous Integration & Automated Study Loops: Productivity Secrets",
+                    description = "How software engineers use CI/CD feedback principles to automate and streamline their lifelong learning plans, accelerating project delivery and tech skill acquisition.",
+                    videoUrl = "https://www.youtube.com/watch?v=R8S_v_r_SFE",
+                    isYoutube = true,
+                    technologyCategory = "Productivity",
+                    summary = "Continuous Integration (CI) and CD loop patterns can be direct templates for personal learning. By establishing standard study tasks, triggering automated micro-quizzes, and validating progress daily, learners establish an 'incremental feedback loop'. This minimizes the cognitive overhead of planning, enforces daily active habits, and ensures technical skills are built continuously with zero drift.",
+                    keyTakeaways = "• Treat study schedules as automated CI/CD build triggers.\n• Run small daily test suites (quizzes) to catch learning regressions early.\n• Short feedback loops are the single most critical driver of rapid developer skill acquisition.\n• Isolate conceptual changes to make debug/re-learning faster.\n• Continuous integration of new tools builds deep tech muscle-memory over time.",
+                    socraticQuestions = "• How does treating a study session like an automated build run reduce decision fatigue?\n• Why are short feedback loops more critical than long study marathons for technical skills?\n• How would you implement a learning regression suite for complex software frameworks?",
+                    quizJson = """
+                        [
+                          {
+                            "question": "In personal study design, what corresponds to a 'test run' in CI software?",
+                            "options": [
+                              "An interactive daily active-recall quiz",
+                              "Buying a new textbook or guide",
+                              "Taking a 3-week break from coding",
+                              "Writing a blog post about your dreams"
+                            ],
+                            "correctAnswer": "An interactive daily active-recall quiz",
+                            "explanation": "Quizzes check for gaps in memory, functioning exactly like automated unit tests validating code correctness."
+                          },
+                          {
+                            "question": "Why does reducing decision fatigue boost daily study consistency?",
+                            "options": [
+                              "It makes you study less overall",
+                              "It automates 'what' to study so you focus energy entirely on 'how' to learn",
+                              "It completely replaces the need for a human brain",
+                              "It lets you skip difficult exam topics"
+                            ],
+                            "correctAnswer": "It automates 'what' to study so you focus energy entirely on 'how' to learn",
+                            "explanation": "Automating scheduling reduces decision-making energy, leaving mental stamina fully intact for difficult cognitive retrieval tasks."
+                          },
+                          {
+                            "question": "What is the primary danger of long feedback loops in technical skill acquisition?",
+                            "options": [
+                              "Unchecked misconceptions can compound and solidify into wrong habits",
+                              "They make your laptop run too hot",
+                              "They are too cheap to maintain",
+                              "They require learning too many programming languages"
+                            ],
+                            "correctAnswer": "Unchecked misconceptions can compound and solidify into wrong habits",
+                            "explanation": "Without frequent automated validation (tests/quizzes), misunderstanding can become deeply ingrained before being corrected."
+                          }
+                        ]
+                    """.trimIndent()
+                )
+            )
+
+            db.videoRecallPackageDao().insertVideoPackage(
+                VideoRecallPackage(
+                    id = 3,
+                    title = "Visual Anchors & Material Design 3: Creativity in Graphic Memory",
+                    description = "Exploring how contrast-rich components, skeuomorphic styling cues, and Material Design 3 card hierarchies enhance visual scanning and memory consolidation in learning interfaces.",
+                    videoUrl = "https://www.youtube.com/watch?v=6P7K_mEonfU",
+                    isYoutube = true,
+                    technologyCategory = "Creativity",
+                    summary = "Great visual design is not just beautiful—it is a functional learning accelerator. By using distinctive shape radii, tactile Material 3 cards, and intentional semantic colors (e.g., green for easy, red for hard), interfaces create visual anchors. These anchors assist the visual cortex in chunking information, reducing cognitive load and helping users retain key technical details.",
+                    keyTakeaways = "• Visual cues and Material Design 3 cards act as primary memory anchors.\n• Consistent spacing and contrast-rich layouts speed up visual scanning by 40%.\n• Color-coding states directly links emotional salience with memory performance.\n• Generous padding prevents visual clutter, allowing focused attention on key concepts.\n• High-fidelity icons assist fast semantic recall and cross-concept linking.",
+                    socraticQuestions = "• How do rounded card outlines and shadows create a hierarchy that makes scanning easier for the eye?\n• Why does a crowded UI with poor padding directly harm cognitive consolidation of facts?\n• In what ways can color and design be used to indicate learning states without relying on text?",
+                    quizJson = """
+                        [
+                          {
+                            "question": "How do visual anchors in a UI assist cognitive processing?",
+                            "options": [
+                              "They help the brain chunk information, reducing the layout's cognitive load",
+                              "They make the phone battery last longer",
+                              "They replace all textual content with images",
+                              "They increase reading speeds to thousands of words per minute"
+                            ],
+                            "correctAnswer": "They help the brain chunk information, reducing the layout's cognitive load",
+                            "explanation": "Visual layout cues organize the hierarchy of information, helping the visual cortex group related elements automatically."
+                          },
+                          {
+                            "question": "What design guideline prevents visual clutter and maximizes text focus?",
+                            "options": [
+                              "Using zero margins on all sides",
+                              "Generous padding and negative space based on the 8dp grid",
+                              "Packing as many buttons as possible onto one screen",
+                              "Using 15 different font families"
+                            ],
+                            "correctAnswer": "Generous padding and negative space based on the 8dp grid",
+                            "explanation": "Sufficient negative space and padding allow the eyes to rest and focus on the central learning content, avoiding clutter."
+                          },
+                          {
+                            "question": "How do semantic colors (e.g., success green, error red) benefit learning?",
+                            "options": [
+                              "They look fun and futuristic",
+                              "They directly associate memory states with immediate emotional and visual salience",
+                              "They eliminate the need to read actual words",
+                              "They force the user to study only easy cards"
+                            ],
+                            "correctAnswer": "They directly associate memory states with immediate emotional and visual salience",
+                            "explanation": "Semantic color associations create immediate visual categories that prompt the brain to form intuitive, low-effort cognitive connections."
+                          }
+                        ]
+                    """.trimIndent()
+                )
+            )
 
             // 2. Preseed concept mastery (Knowledge Graph)
             val concepts = listOf(

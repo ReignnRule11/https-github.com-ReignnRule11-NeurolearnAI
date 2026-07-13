@@ -147,6 +147,31 @@ Aligns regional educational standards with funding sandboxes:
 
 ---
 
+## 🎥 Video Intelligence Lab: Socratic Video Synthesis - *NEW!*
+
+The **Video Intelligence Lab** provides a high-fidelity environment to ingest, synthesize, and actively study technical video content (YouTube or local MP4 files). Categorized into critical cognitive performance dimensions—**Learning, Retention, Engagement, Creativity, Innovation, and Productivity**—this module uses the Gemini API to turn passive screen time into a structured, active-recall study session.
+
+### 🧠 How It Works
+1. **Intelligent Ingestion & AI Synthesis**:
+   - Students paste a YouTube URL or specify an MP4 file path.
+   - Clicking **Analyze Video with Gemini** prompts the Gemini-3.5-Flash model to process the video's context, title, and description.
+   - Generates a customized executive summary, structured key takeaways, Socratic guiding questions, and a customized 3-question multiple-choice retention quiz.
+2. **Interactive Simulated Media Player**:
+   - A dark Cosmic video player featuring a dynamic play/pause control loop, real-time running progress bars, and dual-interval time displays.
+3. **Multi-Tab Socratic Study Center**:
+   - **Overview Tab**: Displays rich, analytical summaries explaining how the specific technology accelerates human performance or learning.
+   - **Takeaways Tab**: Outlines tactical lessons, design metrics, and operational guidelines derived from the video.
+   - **Socratic Recall Tab**: Encourages active retrieval. Students write conceptual explanations of the video's technologies and receive real-time constructive feedback and follow-up prompts from their **Socratic Learning Twin** powered by Gemini.
+   - **Active Quiz Tab**: Launches an interactive, immediate feedback quiz showing red/green validation colors, radio option selections, and detailed explanation blocks explaining correct options.
+4. **Local SQLite Persistence**:
+   - Saves all ingested videos, metadata, and generated quiz objects inside the local Room database (`video_recall_packages` table).
+   - Preseeds high-quality, pre-compiled technical packages covering:
+     - *Accelerating Cognitive Retention via Socratic Dialogue Twins* (Learning)
+     - *Continuous Integration & Automated Study Loops* (Productivity)
+     - *Visual Anchors & Material Design 3* (Creativity)
+
+---
+
 ## 🗄️ Architecture & Database Schema
 
 NeuroLearn AI is architected using **MVVM** and modern **Room Database** local storage.
@@ -208,6 +233,21 @@ data class BlockchainCertificate(
     val transactionHash: String,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "video_recall_packages")
+data class VideoRecallPackage(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val title: String,
+    val description: String,
+    val videoUrl: String,
+    val isYoutube: Boolean,
+    val technologyCategory: String, // e.g., "Learning", "Retention", "Productivity"
+    val timestamp: Long = System.currentTimeMillis(),
+    val summary: String,
+    val keyTakeaways: String, // newline-separated or comma-separated
+    val socraticQuestions: String, // newline-separated
+    val quizJson: String // JSON representation of 3 questions
+)
 ```
 
 ---
@@ -254,6 +294,7 @@ neurolearn-android/
 │           │           ├── ReviewScreen.kt (Targeted weak-concept repetition question sandboxes)
 │           │           ├── ProgressScreen.kt (Visual competency charts and statistical logs)
 │           │           ├── LanguageLabScreen.kt (Socratic multilingual real-time translation tools)
+│           │           ├── VideoIntelligenceHubScreen.kt (Submit/Link YouTube & MP4 videos, Socratic active recall, & quizzes)
 │           │           └── LoginScreen.kt (Multiplayer session creator)
 │           └── res/ (Vector drawables, layout strings, XML backups, and launcher mipmaps)
 ├── gradle/libs.versions.toml (Central Version Catalog for dependency tracking)
@@ -278,6 +319,15 @@ neurolearn-android/
 | **Proposal Item** | `inbox_offer_<id>` | Individual received contract offer card. |
 | **Accept Offer** | `accept_offer_btn_<id>` | Changes status of proposal to ACCEPTED. |
 | **Decline Offer** | `decline_offer_btn_<id>` | Changes status of proposal to DECLINED. |
+| **Video Intelligence Hub Root** | `video_recall_details_pane` | Slide-out detailed cognitive synthesis panel. |
+| **Video Back Button** | `video_hub_back_btn` | Back arrow returning from Video Hub to Home. |
+| **Upload Video FAB** | `upload_video_fab` | Launches upload/link video modal. |
+| **Category Filter Chips** | `filter_chip_<Category>` | Filter chip to filter videos by cognitive category. |
+| **Video Ingest Card** | `video_card_<id>` | Displays individual video recall study status. |
+| **Home Video Card Link** | `home_video_intelligence_card` | Navigation card on HomeScreen to open Video Lab. |
+| **Tutor Panel Video Link** | `pane_video_button` | Interactive button inside LearnScreen pane. |
+| **Tech Hub Video Shortcut** | `tech_hub_video_lab_btn` | Direct app-bar shortcut from TechHubScreen. |
+| **Upload Dialog Card** | `upload_video_dialog_card` | Dialogue overlay card for ingestion inputs. |
 
 ---
 

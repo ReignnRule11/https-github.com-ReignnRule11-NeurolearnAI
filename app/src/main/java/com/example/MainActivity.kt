@@ -218,6 +218,7 @@ fun NeuroLearnAppShell(viewModel: MainViewModel = viewModel()) {
                     Screen.StudyPlanner -> StudyPlannerScreen(viewModel = viewModel)
                     is Screen.TechStudyRoom -> TechStudyRoomScreen(viewModel = viewModel, roomId = screen.roomId)
                     Screen.TalentHub -> TalentHubScreen(viewModel = viewModel)
+                    Screen.VideoIntelligence -> VideoIntelligenceHubScreen(viewModel = viewModel)
                 }
             }
         }

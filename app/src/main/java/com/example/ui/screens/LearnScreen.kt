@@ -431,6 +431,24 @@ fun ConceptDetailPane(
                 Text("Synthesize Notes")
             }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 4. Video Socratic Analysis
+        OutlinedButton(
+            onClick = { viewModel.navigateTo(Screen.VideoIntelligence) },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .testTag("pane_video_button")
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(imageVector = Icons.Default.SmartDisplay, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Video Intelligence Lab")
+            }
+        }
     }
 }
 

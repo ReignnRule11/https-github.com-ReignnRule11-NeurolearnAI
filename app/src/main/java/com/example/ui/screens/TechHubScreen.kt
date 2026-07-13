@@ -100,6 +100,18 @@ fun TechHubScreen(viewModel: MainViewModel) {
                         )
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.navigateTo(Screen.VideoIntelligence) },
+                        modifier = Modifier.testTag("tech_hub_video_lab_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SmartDisplay,
+                            contentDescription = "Video Intelligence Lab",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.largeTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
