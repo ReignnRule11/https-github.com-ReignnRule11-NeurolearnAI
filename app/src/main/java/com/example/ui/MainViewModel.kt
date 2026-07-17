@@ -51,6 +51,7 @@ sealed interface Screen {
     object ExamPartnershipsHub : Screen
     object TalentHub : Screen
     object VideoIntelligence : Screen
+    object EnterpriseConsole : Screen
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {

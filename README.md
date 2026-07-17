@@ -172,6 +172,29 @@ The **Video Intelligence Lab** provides a high-fidelity environment to ingest, s
 
 ---
 
+## 🛡️ Enterprise Control Center, RBAC & Observability Gateway - *NEW!*
+
+The **Enterprise Control Center** serves as a secure, production-ready gateway layer that replaces direct, unmonitored client-to-service calls. Designed to operate across isolated institutional containers, it provides robust identity management, AI query routing, and real-time observability telemetry.
+
+### 🧠 Core Subsystems
+1. **Multi-Tenant Visual Isolation**:
+   - Manages distinct institutional boundaries (e.g., *Stanford University*, *MIT Engineering*, *UNICEF Global*) with localized domains, dynamic API rate constraints, compliance standards (HIPAA, GDPR, CCPA), and unique branding profiles.
+   - Dynamic UI styling adapts instantly to the active tenant's branding colors.
+2. **Role-Based Access Control (RBAC)**:
+   - Evaluates active user profiles across six hierarchical security clearances: *Students*, *Teachers*, *Parents*, *School Admins*, *Recruiters*, and *Super Admins*.
+   - Policy clearance matrices dynamically authorize or deny sensitive actions like executing prompt queries, syncing remote databases, and managing user configurations.
+3. **Multi-Provider AI Orchestration**:
+   - Intercepts outbound model queries and intelligently routes them based on latency preferences, compliance rules, and token budgets.
+   - Supports five dynamic backends: *Gemini Direct*, *OpenAI*, *Anthropic Claude*, *Cohere Enterprise*, and *Local Secure (Offline)*, paired with automated Socratic offline failover handlers.
+4. **Offline-First SQLite Synchronization**:
+   - Coordinates client-side Room delta packets syncing to central databases.
+   - Enacts customizable conflict resolution policies: *Client Wins Override*, *Remote Server Wins Override*, and *AI Smart Merge* (synthesizing overlapping records with semantic analysis).
+5. **Observability & Cryptographic Ledger**:
+   - Real-time telemetry monitors API latency, synchronization speed, database write performance, active network sockets, and tenant-level budget consumption.
+   - Maintains a tamper-proof SHA-256 audit log that sequentially hashes transactional records to prevent log manipulation.
+
+---
+
 ## 🗄️ Architecture & Database Schema
 
 NeuroLearn AI is architected using **MVVM** and modern **Room Database** local storage.
@@ -268,9 +291,12 @@ neurolearn-android/
 │           │   ├── MainViewModel.kt (Central ViewModel managing state flows, DB queries, and API triggers)
 │           │   ├── api/
 │           │   │   ├── GeminiClient.kt (REST call configurations connecting with Gemini models and offline handlers)
+│           │   │   ├── EnterpriseBackend.kt (Gateway for Multi-Tenant configs, RBAC permissions, sync deltas, and cryptographic SHA logs)
 │           │   │   └── PdfTextExtractor.kt (Local PDF stream processing and structural chunking algorithms)
 │           │   ├── data/
 │           │   │   ├── Database.kt (Local Room database, SQLite schemas, entity classes, and access DAOs)
+│           │   │   ├── SQLiteSyncAdapter.kt (Offline-first local Room/SQLite database adapter for progress and material sync)
+│           │   │   ├── SQLiteSyncService.kt (Background service monitoring network and triggering auto-sync)
 │           │   │   ├── MindMap.kt (MindMap structural layout nodes and knowledge-graph associations)
 │           │   │   ├── FirestoreManager.kt (Simulated online document syncing and sync conflict hooks)
 │           │   │   └── SharedSessionModels.kt (Multiplayer collaborative live peer coding room state models)
@@ -295,6 +321,7 @@ neurolearn-android/
 │           │           ├── ProgressScreen.kt (Visual competency charts and statistical logs)
 │           │           ├── LanguageLabScreen.kt (Socratic multilingual real-time translation tools)
 │           │           ├── VideoIntelligenceHubScreen.kt (Submit/Link YouTube & MP4 videos, Socratic active recall, & quizzes)
+│           │           ├── EnterpriseConsoleScreen.kt (Four-tab Enterprise Control Center managing Tenancy & Roles, AI Orchestration, Offline Sync, and Security Logs)
 │           │           └── LoginScreen.kt (Multiplayer session creator)
 │           └── res/ (Vector drawables, layout strings, XML backups, and launcher mipmaps)
 ├── gradle/libs.versions.toml (Central Version Catalog for dependency tracking)
@@ -328,6 +355,16 @@ neurolearn-android/
 | **Tutor Panel Video Link** | `pane_video_button` | Interactive button inside LearnScreen pane. |
 | **Tech Hub Video Shortcut** | `tech_hub_video_lab_btn` | Direct app-bar shortcut from TechHubScreen. |
 | **Upload Dialog Card** | `upload_video_dialog_card` | Dialogue overlay card for ingestion inputs. |
+| **Home: Enterprise Console Card** | `home_enterprise_console_card` | High-visibility enterprise navigation card on the main HomeScreen dashboard. |
+| **Enterprise Back Button** | `enterprise_console_back_btn` | Safe, elegant navigation returning from Enterprise Control Center to Learning Hub. |
+| **Enterprise Navigation Tabs** | `enterprise_tab_<index>` | Interactive tabs navigating Tenancy, AI Orchestration, Offline Sync, and Logs. |
+| **Tenant Selector Cards** | `tenant_card_<id>` | Dynamic tenant switching selection cards (Stanford, MIT, UNICEF). |
+| **RBAC Authorization Cards** | `role_card_<role>` | RBAC clearance cards enabling policy simulations (Students, Admins, etc.). |
+| **Model Provider Cards** | `provider_card_<provider>` | AI Orchestration routing selection cards (Gemini, Claude, GPT, Cohere, Local). |
+| **AI Playground Input** | `orchestrate_prompt_input` | System prompt entry box inside Federated API Routing tester. |
+| **AI Playground Execute** | `orchestrate_prompt_submit` | Executable trigger routing API prompt safely to active proxy gateway. |
+| **Sync Strategy Selectors** | `sync_strategy_card_<strategy>` | Offline conflict resolution configuration strategy cards. |
+| **Database Sync Executable** | `trigger_sync_btn` | Direct physical trigger synchronizing SQLite delta frames to cloud. |
 
 ---
 

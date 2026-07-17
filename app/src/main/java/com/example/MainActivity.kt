@@ -23,10 +23,21 @@ import com.example.ui.Screen
 import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
 
+import android.content.Intent
+import com.example.data.SQLiteSyncService
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        // Start offline-first background SQLite synchronization service
+        try {
+            startService(Intent(this, SQLiteSyncService::class.java))
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to start SQLiteSyncService background worker", e)
+        }
+
         setContent {
             val viewModel: MainViewModel = viewModel()
             val isDarkMode by viewModel.isDarkMode.collectAsState()
@@ -219,6 +230,7 @@ fun NeuroLearnAppShell(viewModel: MainViewModel = viewModel()) {
                     is Screen.TechStudyRoom -> TechStudyRoomScreen(viewModel = viewModel, roomId = screen.roomId)
                     Screen.TalentHub -> TalentHubScreen(viewModel = viewModel)
                     Screen.VideoIntelligence -> VideoIntelligenceHubScreen(viewModel = viewModel)
+                    Screen.EnterpriseConsole -> EnterpriseConsoleScreen(viewModel = viewModel, onBack = { viewModel.navigateTo(Screen.Home) })
                 }
             }
         }

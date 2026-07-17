@@ -90,9 +90,17 @@ object GeminiClient {
     }
 
     /**
-     * Generates a text response from Gemini using the specified prompt and optional system instructions.
+     * Public entry point redirected through the Enterprise AI Routing Orchestration Layer.
      */
-    suspend fun generate(prompt: String, systemPrompt: String? = null): String = withContext(Dispatchers.IO) {
+    suspend fun generate(prompt: String, systemPrompt: String? = null): String {
+        return EnterpriseBackend.routeLlmRequest(prompt, systemPrompt)
+    }
+
+    /**
+     * Directly contacts the Gemini REST endpoint or resolves to local secure fallback.
+     * This is invoked exclusively by the Enterprise Orchestrator to bypass the proxy loop.
+     */
+    suspend fun executeDirectGemini(prompt: String, systemPrompt: String? = null): String = withContext(Dispatchers.IO) {
         if (!isApiKeyAvailable()) {
             Log.w(TAG, "Gemini API key is not configured. Falling back to local simulated response.")
             return@withContext getLocalFallbackResponse(prompt, systemPrompt)
@@ -142,7 +150,7 @@ object GeminiClient {
      * Generates a local fallback response when the API key is not present or an error occurs.
      * Keeps the app fully functional and interactive in all states.
      */
-    private fun getLocalFallbackResponse(prompt: String, systemPrompt: String?): String {
+    fun getLocalFallbackResponse(prompt: String, systemPrompt: String?): String {
         val p = prompt.lowercase()
         return when {
             p.contains("diagnostic") || p.contains("assessment") -> {

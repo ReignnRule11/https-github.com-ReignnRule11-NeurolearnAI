@@ -26,6 +26,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Background SQLite Offline Sync Service -->
+        <service
+            android:name="com.example.data.SQLiteSyncService"
+            android:exported="false" />
     </application>
 
 </manifest>
