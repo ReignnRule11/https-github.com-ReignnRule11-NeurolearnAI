@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NeuroLearn AI - Multi-Tenant Firestore Schema Blueprint",
+  "description": "Comprehensive document schema schemas for school-level data isolation, role-based controls, and row-level security partitions.",
+  "version": "1.0.0",
+  "collections": {
+    "users": {
+      "description": "Primary user profiles mapping system clearances and active school tenancy identifiers.",
+      "partitionKey": "tenantId",
+      "rowLevelSecurity": "Authenticated owner or Super Admin, or School Admin of the same tenant",
+      "properties": {
+        "id": { "type": "string", "description": "Equal to the Firebase Auth uid." },
+        "name": { "type": "string", "description": "Display name of the student, instructor, or administrator." },
+        "email": { "type": "string", "description": "Associated institutional email address." },
+        "tenantId": { "type": "string", "description": "School Tenant Partition Key (e.g. stanford_univ, mit_eng)." },
+        "role": { "type": "string", "enum": ["STUDENT", "TEACHER", "PARENT", "SCHOOL_ADMIN", "RECRUITER", "SUPER_ADMIN"] },
+        "createdAt": { "type": "integer", "description": "Unix timestamp in milliseconds representing creation time." },
+        "lastActive": { "type": "integer", "description": "Unix timestamp in milliseconds representing last operational handshake." }
+      },
+      "required": ["id", "name", "email", "tenantId", "role", "createdAt"]
+    },
+    "tenants": {
+      "description": "Core institutional boundaries providing custom branding and system budget variables.",
+      "partitionKey": "id",
+      "rowLevelSecurity": "Super Admin or users belonging to the specific tenant partition",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier (e.g. stanford_univ, mit_eng)." },
+        "name": { "type": "string", "description": "Formal institutional name." },
+        "domains": { "type": "array", "items": { "type": "string" }, "description": "Allowed domain wildcards (e.g., ['*.stanford.edu'])." },
+        "primaryColorHex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "secondaryColorHex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "complianceStandard": { "type": "string", "enum": ["GDPR / FERPA", "HIPAA", "SOC2 Type II"] },
+        "maxUserLicenses": { "type": "integer" },
+        "monthlyLlmBudgetDollars": { "type": "number" },
+        "activeUsersCount": { "type": "integer" }
+      },
+      "required": ["id", "name", "domains", "complianceStandard", "maxUserLicenses", "monthlyLlmBudgetDollars"]
+    },
+    "decks": {
+      "description": "Flashcard learning decks partitioned strictly by tenantId to enforce school data boundaries.",
+      "partitionKey": "tenantId",
+      "rowLevelSecurity": "Authenticated users of the matching tenant. Modifications restricted to owners, teachers, or administrators.",
+      "properties": {
+        "id": { "type": "string", "description": "Auto-generated document ID." },
+        "name": { "type": "string", "description": "Title of the flashcard deck." },
+        "description": { "type": "string", "description": "Detailed explanation of course contents." },
+        "createdAt": { "type": "integer" },
+        "userId": { "type": "string", "description": "The uid of the creator." },
+        "tenantId": { "type": "string", "description": "The school partition ID matching creator's school." }
+      },
+      "required": ["id", "name", "createdAt", "userId", "tenantId"],
+      "subcollections": {
+        "cards": {
+          "description": "Individual flashcard items located inside a deck. Inherits tenant boundaries from the parent document.",
+          "properties": {
+            "id": { "type": "string" },
+            "deckId": { "type": "string" },
+            "question": { "type": "string" },
+            "answer": { "type": "string" },
+            "easeFactor": { "type": "number", "minimum": 1.3 },
+            "repetitions": { "type": "integer", "minimum": 0 },
+            "intervalDays": { "type": "integer", "minimum": 1 },
+            "nextReviewDate": { "type": "integer" },
+            "lastReviewed": { "type": "integer" }
+          },
+          "required": ["id", "deckId", "question", "answer", "easeFactor", "repetitions", "intervalDays", "nextReviewDate"]
+        }
+      }
+    },
+    "audit_logs": {
+      "description": "Immutable, tamper-proof system audit logs hashed and partitioned sequentially.",
+      "partitionKey": "tenantId",
+      "rowLevelSecurity": "Super Admin read access. School Admin of the matching tenant can read tenant-specific logs. Write-only for users, updates/deletions blocked completely.",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "integer" },
+        "action": { "type": "string", "description": "Action category, e.g., AUTH_SIGN_IN, KEY_ROTATION, SYNC_MERGE." },
+        "details": { "type": "string", "description": "Expanded description of the event details." },
+        "userId": { "type": "string", "description": "The uid of the initiator." },
+        "userIpAddress": { "type": "string" },
+        "sha256ChainHash": { "type": "string", "description": "SHA-256 hash chaining this block to the previous audit log block." },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "action", "details", "userId", "userIpAddress", "sha256ChainHash", "tenantId"]
+    },
+    "talent_profiles": {
+      "description": "Verified student portfolios containing certified skills available to institutional recruiters.",
+      "partitionKey": "tenantId",
+      "rowLevelSecurity": "Student owner has write access. Recruiters, matching students, and admins have read access.",
+      "properties": {
+        "id": { "type": "string", "description": "Matches student uid." },
+        "fullName": { "type": "string" },
+        "verifiedSkill": { "type": "string" },
+        "scorePercentile": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "certificationId": { "type": "string", "description": "Blockchain verification hash." },
+        "preferredModel": { "type": "string", "enum": ["Remote", "Hybrid", "Onsite"] },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "fullName", "verifiedSkill", "scorePercentile", "certificationId", "preferredModel", "tenantId"]
+    },
+    "analytics_metrics": {
+      "description": "Operational diagnostics tracking system safety, crash logs, and school telemetry.",
+      "partitionKey": "tenantId",
+      "rowLevelSecurity": "Super Admin and School Admin of matching tenant",
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "featureUsageMap": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" },
+          "description": "Keys mapping feature name to usage counts."
+        },
+        "dropoffMetrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stepIndex": { "type": "integer" },
+              "stepName": { "type": "string" },
+              "dropOffReason": { "type": "string" },
+              "percentageRemaining": { "type": "integer" }
+            }
+          }
+        },
+        "crashLogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "component": { "type": "string" },
+              "reason": { "type": "string" },
+              "resolution": { "type": "string" },
+              "timestamp": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "required": ["id", "tenantId"]
+    }
+  },
+  "recommendedIndexes": [
+    {
+      "collectionGroup": "decks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ],
+      "description": "Enables fast user-specific deck sorting and display dashboards."
+    },
+    {
+      "collectionGroup": "decks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ],
+      "description": "Enables tenant-isolated listings and chronological admin reviews."
+    },
+    {
+      "collectionGroup": "audit_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ],
+      "description": "Allows school administrators to view historical logs sequentially within their school partition."
+    }
+  ]
+}

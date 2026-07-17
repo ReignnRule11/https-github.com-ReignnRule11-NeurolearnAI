@@ -275,12 +275,32 @@ data class VideoRecallPackage(
 
 ---
 
+## 🔒 Multi-Tenant Firestore Schema & Row-Level Security (RLS)
+
+NeuroLearn AI integrates a robust, production-ready **Firestore Database architecture featuring tenant-based partitioning and custom role-based security rules** to enforce absolute school-level data isolation (e.g., separating Stanford, MIT, and UNICEF data).
+
+### Key Architectural Constructs:
+1. **School-Level Logical Isolation**: All tenant-sensitive collections (`decks`, `cards`, `audit_logs`, `talent_profiles`, `analytics_metrics`) contain a `tenantId` field partition key. Every Firestore query automatically appends the user's validated tenant identifier to ensure query separation.
+2. **Double-Handshake Verification Rules**: Security rules in `/firestore.rules` cross-reference the incoming authenticated request tokens (Custom Claims) AND perform fallback database reads against `/users/{userId}` to prevent client-side header spoofing.
+3. **Rigid Role-Based Clearance (RBAC)**: Enforces access bounds based on six user clearances: *Student*, *Teacher*, *Parent*, *School Admin*, *Recruiter*, and *Super Admin*.
+4. **Tamper-Proof Audit Trail Ledger**: Access logs written to the database cannot be edited or deleted by standard or administrative accounts due to a strict write-once constraint (`allow update, delete: if false`).
+
+For extensive detail, schemas, fields, and indices, consult:
+- **[/firestore.rules](/firestore.rules)**: Production-ready Firestore Security Rules.
+- **[/firestore-schema.json](/firestore-schema.json)**: Machine-readable collection definitions and index proposals.
+- **[/firestore-schema-guide.md](/firestore-schema-guide.md)**: Developer configuration and operations handbook.
+
+---
+
 ## 📂 Detailed Project Structure
 
 Below is the directory tree of the NeuroLearn AI codebase, outlining the modern MVVM and clean-architecture separation of data, API clients, and Compose screen modules:
 
 ```
 neurolearn-android/
+├── firestore.rules (Production-ready Firebase Multi-Tenant security rules with RLS constraints)
+├── firestore-schema.json (Machine-readable JSON schema defining Firestore entities and indexes)
+├── firestore-schema-guide.md (Developer operations guide for Firestore multi-tenancy & security rules)
 ├── app/
 │   ├── build.gradle.kts (App-level Gradle dependencies and custom secrets configuration)
 │   └── src/

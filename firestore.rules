@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =======================================================
+    // SECURITY UTILITIES & HELPER FUNCTIONS
+    // =======================================================
+
+    // Check if the request is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Retrieve the user profile document from the database
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check if the user's tenantId matches the requested partition (tenant-based partitioning)
+    // Supports both Token Custom Claims (for speed/security) and User Document fallbacks
+    function matchesTenant(tenantId) {
+      return isAuthenticated() && (
+        request.auth.token.tenantId == tenantId || 
+        getUserDoc().tenantId == tenantId
+      );
+    }
+
+    // Validate if the authenticated user possesses the specific RBAC role
+    function hasRole(role) {
+      return isAuthenticated() && (
+        request.auth.token.role == role || 
+        getUserDoc().role == role
+      );
+    }
+
+    // Check if user is checking their own record or is a Super Admin
+    function isOwnerOrSuperAdmin(userId) {
+      return isAuthenticated() && (
+        request.auth.uid == userId || 
+        hasRole('SUPER_ADMIN')
+      );
+    }
+
+    // =======================================================
+    // COLLECTION-SPECIFIC SECURITY SCHEMAS
+    // =======================================================
+
+    // 1. Users Partition - Contains sensitive profile details, role mappings, and tenant assignments
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        hasRole('SUPER_ADMIN') || 
+        (hasRole('SCHOOL_ADMIN') && matchesTenant(resource.data.tenantId))
+      );
+      allow create: if isAuthenticated() && request.auth.uid == userId && (
+        !request.resource.data.keys().hasAny(['role']) || // Standard users cannot set their own roles
+        request.resource.data.role == 'STUDENT'
+      );
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'tenantId']) || // Users cannot escalate roles or jump tenants
+        hasRole('SUPER_ADMIN') || 
+        (hasRole('SCHOOL_ADMIN') && matchesTenant(resource.data.tenantId))
+      );
+      allow delete: if hasRole('SUPER_ADMIN');
+    }
+
+    // 2. Tenants Partition - Core institutional boundaries (Stanford, MIT, UNICEF, etc.)
+    match /tenants/{tenantId} {
+      allow read: if isAuthenticated() && (matchesTenant(tenantId) || hasRole('SUPER_ADMIN'));
+      allow write: if hasRole('SUPER_ADMIN') || (hasRole('SCHOOL_ADMIN') && matchesTenant(tenantId));
+    }
+
+    // 3. Decks Partition (Flashcard Decks) - Partitioned by school-level tenantId
+    match /decks/{deckId} {
+      allow read: if isAuthenticated() && matchesTenant(resource.data.tenantId);
+      
+      allow create: if isAuthenticated() && 
+                    matchesTenant(request.resource.data.tenantId) && 
+                    (hasRole('TEACHER') || hasRole('SCHOOL_ADMIN') || hasRole('SUPER_ADMIN') || (hasRole('STUDENT') && request.resource.data.userId == request.auth.uid));
+      
+      allow update: if isAuthenticated() && 
+                    matchesTenant(resource.data.tenantId) && 
+                    (resource.data.userId == request.auth.uid || hasRole('TEACHER') || hasRole('SCHOOL_ADMIN') || hasRole('SUPER_ADMIN')) &&
+                    !request.resource.data.diff(resource.data).affectedKeys().hasAny(['tenantId']); // Prevent cross-tenant payload hijacking
+      
+      allow delete: if isAuthenticated() && 
+                    matchesTenant(resource.data.tenantId) && 
+                    (resource.data.userId == request.auth.uid || hasRole('TEACHER') || hasRole('SCHOOL_ADMIN') || hasRole('SUPER_ADMIN'));
+
+      // Nested Subcollection - Flashcards inheriting tenant isolation from parent Deck
+      match /cards/{cardId} {
+        allow read: if isAuthenticated() && matchesTenant(get(/databases/$(database)/documents/decks/{deckId}).data.tenantId);
+        
+        allow write: if isAuthenticated() && 
+                     matchesTenant(get(/databases/$(database)/documents/decks/{deckId}).data.tenantId) && 
+                     (get(/databases/$(database)/documents/decks/{deckId}).data.userId == request.auth.uid || hasRole('TEACHER') || hasRole('SCHOOL_ADMIN') || hasRole('SUPER_ADMIN'));
+      }
+    }
+
+    // 4. Audit Log Ledger Partition - Contains historical system activity, IPs, and hashes
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() && (
+        hasRole('SUPER_ADMIN') || 
+        (hasRole('SCHOOL_ADMIN') && matchesTenant(resource.data.tenantId))
+      );
+      // System logging is open to active users to record their interactions
+      allow create: if isAuthenticated() && matchesTenant(request.resource.data.tenantId);
+      
+      // TAMPER-PROOF GUARANTEE: Security logs cannot be altered or purged
+      allow update, delete: if false;
+    }
+
+    // 5. Talent/Recruiter Profiles Partition - Recruiter matching database
+    match /talent_profiles/{profileId} {
+      allow read: if isAuthenticated() && (
+        hasRole('RECRUITER') || 
+        hasRole('SUPER_ADMIN') || 
+        request.auth.uid == profileId
+      );
+      allow create: if isAuthenticated() && request.auth.uid == profileId && (hasRole('STUDENT') || hasRole('SUPER_ADMIN'));
+      allow update: if isAuthenticated() && request.auth.uid == profileId && (hasRole('STUDENT') || hasRole('SUPER_ADMIN')) &&
+                    !request.resource.data.diff(resource.data).affectedKeys().hasAny(['tenantId']); // Prevent cross-tenant swapping
+      allow delete: if isAuthenticated() && (request.auth.uid == profileId || hasRole('SUPER_ADMIN'));
+    }
+
+    // 6. Institutional Analytics Metrics - High-level metrics tracking
+    match /analytics_metrics/{metricId} {
+      allow read: if isAuthenticated() && (
+        hasRole('SUPER_ADMIN') || 
+        (hasRole('SCHOOL_ADMIN') && matchesTenant(resource.data.tenantId))
+      );
+      allow write: if isAuthenticated() && (
+        hasRole('SUPER_ADMIN') || 
+        (hasRole('SCHOOL_ADMIN') && matchesTenant(request.resource.data.tenantId))
+      );
+    }
+  }
+}

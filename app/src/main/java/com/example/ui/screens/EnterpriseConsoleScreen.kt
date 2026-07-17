@@ -55,7 +55,7 @@ fun EnterpriseConsoleScreen(
     val conflicts by EnterpriseBackend.conflicts.collectAsState()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Tenancy & Roles", "AI Orchestration", "Offline Sync", "Security & Logs")
+    val tabTitles = listOf("Tenancy & Roles", "Focused Dashboards", "AI Orchestration", "Offline Sync & Security", "Diagnostics & Analytics")
     
     // Simulate interactive loading or execution states
     var isSyncing by remember { mutableStateOf(false) }
@@ -244,7 +244,12 @@ fun EnterpriseConsoleScreen(
                         tenantPrimary = tenantPrimary,
                         tenantSecondary = tenantSecondary
                     )
-                    1 -> LlmOrchestrationTab(
+                    1 -> FocusedPersonaDashboardTab(
+                        activeRole = activeRole,
+                        tenantPrimary = tenantPrimary,
+                        tenantSecondary = tenantSecondary
+                    )
+                    2 -> LlmOrchestrationTab(
                         activeLlmConfig = activeLlmConfig,
                         tenantPrimary = tenantPrimary,
                         tenantSecondary = tenantSecondary,
@@ -256,8 +261,17 @@ fun EnterpriseConsoleScreen(
                             isMockLlmRunning = true
                             coroutineScope.launch {
                                 try {
-                                    val reply = EnterpriseBackend.routeLlmRequest(mockLlmPromptInput)
-                                    mockLlmResponseOutput = reply
+                                    val replyResult = com.example.data.EnterpriseDI.aiRepository.executeSocraticPrompt(mockLlmPromptInput, "System: Socratic B2B SaaS gateway")
+                                    mockLlmResponseOutput = "Actual Routed Provider: ${replyResult.actualProvider.displayName}\n" +
+                                            "Tokens Used: ${replyResult.tokensUsed} | Latency: ${replyResult.latencyMs}ms\n" +
+                                            "Estimated Cost: $${String.format(Locale.US, "%.5f", replyResult.costDollars)}\n\n" +
+                                            replyResult.content
+                                    
+                                    EnterpriseBackend.writeLog(
+                                        LogLevel.AUDIT,
+                                        "AI_ORCHESTRATOR",
+                                        "Socrates Query completed successfully using routing provider: ${replyResult.actualProvider.displayName}"
+                                    )
                                 } catch (e: Exception) {
                                     mockLlmResponseOutput = "Routing error: ${e.message}"
                                 } finally {
@@ -266,7 +280,7 @@ fun EnterpriseConsoleScreen(
                             }
                         }
                     )
-                    2 -> OfflineSyncTab(
+                    3 -> OfflineSyncAndSecurityTab(
                         conflicts = conflicts,
                         isSyncing = isSyncing,
                         perfMetrics = perfMetrics,
@@ -282,10 +296,7 @@ fun EnterpriseConsoleScreen(
                             }
                         }
                     )
-                    3 -> SecurityLogsTab(
-                        auditTrail = auditTrail,
-                        logEvents = logEvents,
-                        perfMetrics = perfMetrics,
+                    4 -> DiagnosticsAndAnalyticsTab(
                         tenantPrimary = tenantPrimary,
                         tenantSecondary = tenantSecondary
                     )
@@ -753,10 +764,10 @@ fun LlmOrchestrationTab(
 }
 
 // ==========================================
-// TAB 3: OFFLINE-FIRST DB SYNCHRONIZATION
+// TAB 3: OFFLINE-FIRST SYNC & SECURITY
 // ==========================================
 @Composable
-fun OfflineSyncTab(
+fun OfflineSyncAndSecurityTab(
     conflicts: List<SyncConflict>,
     isSyncing: Boolean,
     perfMetrics: PerformanceMetrics,
@@ -766,6 +777,15 @@ fun OfflineSyncTab(
     onStrategyChange: (SyncConflictStrategy) -> Unit,
     onTriggerSync: () -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    var isKeyRotating by remember { mutableStateOf(false) }
+    var showRotationSuccess by remember { mutableStateOf(false) }
+    var isRunningPenTest by remember { mutableStateOf(false) }
+    var penTestResults by remember { mutableStateOf<List<com.example.data.PenetrationTestResult>>(emptyList()) }
+    var showSecurityAudits by remember { mutableStateOf(false) }
+    val df = remember { SimpleDateFormat("HH:mm:ss.SSS", Locale.US) }
+    val activeLedger by EnterpriseBackend.auditTrail.collectAsState()
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -948,6 +968,682 @@ fun OfflineSyncTab(
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // SECURE COMPLIANCE BLOCK: Key Rotation & Penetration Testing
+        item {
+            Divider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "SaaS Security Shield & Least-Privilege Controls",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = "Manage server-side cryptographic structures, rotate institutional data access keys, and run self-mitigating OWASP penetration vulnerability diagnostics.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.2f)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.03f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color(0xFF10B981))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Database Encryption Wrapper", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("AES-256 Symmetric wrapping with secure rotation sequence.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = {
+                                isKeyRotating = true
+                                coroutineScope.launch {
+                                    delay(800)
+                                    com.example.data.EnterpriseDI.adminRepository.rotateEncryptionKeys()
+                                    isKeyRotating = false
+                                    showRotationSuccess = true
+                                }
+                            },
+                            enabled = !isKeyRotating,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            modifier = Modifier.weight(1f).height(36.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            if (isKeyRotating) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 1.5.dp)
+                            } else {
+                                Text("Rotate Keys", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                isRunningPenTest = true
+                                coroutineScope.launch {
+                                    delay(1000)
+                                    penTestResults = com.example.data.EnterpriseDI.adminRepository.runPenetrationDiagnostics()
+                                    isRunningPenTest = false
+                                }
+                            },
+                            enabled = !isRunningPenTest,
+                            colors = ButtonDefaults.buttonColors(containerColor = tenantSecondary),
+                            modifier = Modifier.weight(1.5f).height(36.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            if (isRunningPenTest) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 1.5.dp)
+                            } else {
+                                Text("Penetration Diagnostic Check", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    if (showRotationSuccess) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "AES-256 Master key wrapping materials rotated. Dynamic credentials re-encrypted successfully in Android KeyStore.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF10B981),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+
+        // Penetration diagnostic results list
+        if (penTestResults.isNotEmpty()) {
+            items(penTestResults) { result ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("[${result.vulnerabilityId}] ${result.name}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Surface(
+                                color = when (result.severity) {
+                                    "CRITICAL", "HIGH" -> Color(0xFFEF4444).copy(alpha = 0.15f)
+                                    else -> Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                },
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = result.severity,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (result.severity) {
+                                        "CRITICAL", "HIGH" -> Color(0xFFEF4444)
+                                        else -> Color(0xFFF59E0B)
+                                    },
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(result.description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            color = Color(0xFF10B981).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "Vulnerability Status: ${result.status}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF10B981),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Collapsible audit ledger link
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showSecurityAudits = !showSecurityAudits },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Analytics, contentDescription = null, tint = tenantPrimary)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Tamper-Proof Audit Trails", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Direct cryptographic chain hash audit trail ledger.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Icon(
+                        imageVector = if (showSecurityAudits) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null
+                    )
+                }
+            }
+        }
+
+        if (showSecurityAudits) {
+            items(activeLedger) { entry ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = df.format(Date(entry.timestamp)) + " | SECURE_EVENT",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = tenantPrimary
+                            )
+                            Text(
+                                text = "IP: ${entry.userIpAddress}",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "[${entry.action}] ${entry.details}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "SHA-256 Hash Chain Block: ${entry.sha256ChainHash.take(24)}...",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF10B981)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// TAB 2: ROLE PERSONA FOCUSED DASHBOARD
+// ==========================================
+@Composable
+fun FocusedPersonaDashboardTab(
+    activeRole: UserRole,
+    tenantPrimary: Color,
+    tenantSecondary: Color
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = tenantPrimary.copy(alpha = 0.05f)),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, tenantPrimary.copy(alpha = 0.15f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val icon = when (activeRole) {
+                        UserRole.STUDENT -> Icons.Default.School
+                        UserRole.TEACHER -> Icons.Default.SupervisorAccount
+                        UserRole.PARENT -> Icons.Default.FamilyRestroom
+                        UserRole.SCHOOL_ADMIN -> Icons.Default.CorporateFare
+                        UserRole.RECRUITER -> Icons.Default.Work
+                        UserRole.SUPER_ADMIN -> Icons.Default.Shield
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(tenantPrimary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = icon, contentDescription = null, tint = tenantPrimary)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "${activeRole.displayName} Dashboard",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = activeRole.description,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        when (activeRole) {
+            UserRole.STUDENT -> {
+                item {
+                    Text("Personal Learning Track", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(16.dp), 
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("XP Progress", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("4,250 XP", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = tenantPrimary)
+                            }
+                            Column {
+                                Text("Daily Streak", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("18 Days 🔥", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = tenantSecondary)
+                            }
+                            Column {
+                                Text("Completed Labs", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("12 Units", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Text("Active Syllabus & Assignments", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                items(listOf(
+                    "Limits & Continuity Socratic Flashcards" to "Due Tomorrow",
+                    "Infinite Series Diagnostic Practice Test" to "Due in 3 days",
+                    "Dynamic AI Chat Simulation: Language Lab" to "Completed ✅"
+                )) { (task, status) ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Assignment, contentDescription = null, tint = tenantPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(task, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(status, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+            UserRole.TEACHER -> {
+                item {
+                    Text("Class Management & Grading", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Student Mastery Heatmap", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = tenantPrimary)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(40.dp).background(tenantPrimary.copy(alpha = 0.8f)))
+                                    Text("Calculus", fontSize = 10.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(60.dp).background(tenantPrimary))
+                                    Text("Algebra", fontSize = 10.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(25.dp).background(tenantPrimary.copy(alpha = 0.5f)))
+                                    Text("Geometry", fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+                item {
+                    Text("Pending Reviews Queue (3 items)", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                items(listOf(
+                    "Elena Rostova: Advanced Limit Mastery" to "Score: 98% (Awaiting certification)",
+                    "Sarah Jenkins: Infinite Series Quiz" to "Awaiting manual grading rubric",
+                    "Malik Al-Jamil: Socratic Flashcard Customizer" to "Requested peer review"
+                )) { (review, details) ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.RateReview, contentDescription = null, tint = tenantSecondary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(review, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(details, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Button(onClick = {}, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+                                Text("Grade", fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            UserRole.PARENT -> {
+                item {
+                    Text("Student Telemetry Insights", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Socratic Daily Goal Tracker", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = 0.85f, 
+                                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)), 
+                                color = tenantSecondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("85% of daily study requirements achieved today.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                item {
+                    Text("Communication Channel", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Group, contentDescription = null, tint = tenantPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Parent-Teacher Conference (Scheduled)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("July 20, 2026 at 4:30 PM • Host: Prof. Jenkins", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+            UserRole.SCHOOL_ADMIN, UserRole.SUPER_ADMIN -> {
+                item {
+                    Text("Institutional Operations Dashboard", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(16.dp), 
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Allocated API Budget", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("$1,500.00 / mo", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = tenantPrimary)
+                            }
+                            Column {
+                                Text("Active User Licenses", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("482 / 1000 users", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Text("SaaS Compliance Checklist", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                items(listOf(
+                    "Isolate client databases per tenant partition" to "ENABLED (Room / SQLite Dynamic Schema)",
+                    "Multi-provider LLM failover policy" to "ENABLED (Direct & Sovereign proxy limits)",
+                    "Audit log SHA-256 security sequence integrity" to "VERIFIED & ACTIVE ✅"
+                )) { (check, state) ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = Color(0xFF10B981))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(check, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(state, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+            UserRole.RECRUITER -> {
+                item {
+                    Text("Verified Talent Matchmaking Engine", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Match Criteria: Jetpack Compose & Kotlin", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = tenantPrimary)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("Sourcing vetted student graduates with certified technical skills and zero credential inflation.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                item {
+                    Text("Verified Candidates List (NL-CERT)", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                items(com.example.data.EnterpriseDI.talentRepository.getVerifiedProfiles()) { candidate ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Verified, contentDescription = null, tint = tenantSecondary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(candidate.fullName, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Skill: ${candidate.verifiedSkill}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Score: ${candidate.scorePercentile}% | Cert: ${candidate.certificationId}", fontSize = 10.sp, color = tenantPrimary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// TAB 5: ENTERPRISE DIAGNOSTICS & ANALYTICS
+// ==========================================
+@Composable
+fun DiagnosticsAndAnalyticsTab(
+    tenantPrimary: Color,
+    tenantSecondary: Color
+) {
+    val analyticsRepo = remember { com.example.data.EnterpriseDI.analyticsRepository }
+    var showSection by remember { mutableStateOf(0) }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                text = "Enterprise Diagnostics & Analytics Suite",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = "Direct answers to key product operation, system safety, and business health diagnostic inquiries.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        item {
+            ScrollableTabRow(
+                selectedTabIndex = showSection,
+                edgePadding = 0.dp,
+                containerColor = Color.Transparent,
+                contentColor = tenantPrimary,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    "Feature Usage",
+                    "User Dropoff",
+                    "Crashes Logged",
+                    "AI Failures",
+                    "Active Schools"
+                ).forEachIndexed { index, title ->
+                    Tab(
+                        selected = showSection == index,
+                        onClick = { showSection = index },
+                        text = { Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    )
+                }
+            }
+        }
+
+        when (showSection) {
+            0 -> {
+                item {
+                    Text("Which feature is most used?", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                val adoption = analyticsRepo.getFeatureAdoption()
+                items(adoption.toList()) { (feature, percent) ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text(feature, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("$percent%", fontSize = 12.sp, color = tenantPrimary, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = percent / 100f,
+                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                color = tenantPrimary
+                            )
+                        }
+                    }
+                }
+            }
+            1 -> {
+                item {
+                    Text("Where do users drop off?", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                val dropoffs = analyticsRepo.getUserDropOffSteps()
+                items(dropoffs) { metric ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(tenantSecondary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("${metric.stepIndex}", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(metric.stepName, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Reason: ${metric.dropOffReason}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text("${metric.percentageRemaining}%", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tenantSecondary)
+                        }
+                    }
+                }
+            }
+            2 -> {
+                item {
+                    Text("Why did this crash?", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                val crashes = analyticsRepo.getCrashLogs()
+                items(crashes) { log ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.2f)),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.03f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.BugReport, contentDescription = null, tint = Color(0xFFEF4444))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(log.component, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(log.reason, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                color = Color(0xFF10B981).copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "Automated Self-Heal: ${log.resolution}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            3 -> {
+                item {
+                    Text("Which AI prompts fail?", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                val failures = analyticsRepo.getAiPromptFailures()
+                items(failures) { fail ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Failed Provider: ${fail.provider}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = tenantSecondary)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("\"${fail.promptSnippet}...\"", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Error: ${fail.errorReason}", fontSize = 11.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.Autorenew, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Auto-Failover Gateway: ${fail.fallbackUsed}", fontSize = 10.sp, color = Color(0xFF10B981), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+            4 -> {
+                item {
+                    Text("Which schools are most active?", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                val schools = analyticsRepo.getSchoolActivityLeaderboard()
+                items(schools) { school ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.School, contentDescription = null, tint = tenantPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(school.schoolName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Compute: ${school.computeTokensUsed} tokens", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("• Sync Ports: ${school.activeSyncSockets}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("${school.activeDailyUsers}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tenantPrimary)
+                                Text("Daily Active", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }

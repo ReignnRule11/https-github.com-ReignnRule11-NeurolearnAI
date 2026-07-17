@@ -31,6 +31,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
+        // Initialize the standard Dependency Injection container and register feature module repositories
+        try {
+            com.example.data.EnterpriseDI.boot(applicationContext)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to boot EnterpriseDI container", e)
+        }
+
         // Start offline-first background SQLite synchronization service
         try {
             startService(Intent(this, SQLiteSyncService::class.java))
