@@ -62,7 +62,7 @@ fun VideoIntelligenceHubScreen(viewModel: MainViewModel) {
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
                         )
                         Text(
-                            text = "Synthesize and study YouTube & MP4 technical videos",
+                            text = "Simulated player. Gemini analyzes title/description, not video frames.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

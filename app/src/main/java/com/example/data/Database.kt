@@ -13,6 +13,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -363,7 +364,7 @@ interface StudyTaskDao {
         VideoRecallPackage::class
     ],
     version = 22,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun videoRecallPackageDao(): VideoRecallPackageDao
@@ -402,14 +403,16 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+                val builder = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "neurolearn_db"
                 )
                     .addCallback(DatabaseCallback(context))
-                    .fallbackToDestructiveMigration()
-                    .build()
+                if (BuildConfig.DEBUG) {
+                    builder.fallbackToDestructiveMigration(dropAllTables = true)
+                }
+                val instance = builder.build()
                 INSTANCE = instance
                 instance
             }

@@ -117,7 +117,14 @@ fun LoginScreen(viewModel: MainViewModel) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 4.dp, bottom = 32.dp)
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+            )
+            Text(
+                text = "Local device session only. Email, password, and Google buttons do not contact a remote identity provider.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 24.dp)
             )
 
             // Form Card
@@ -322,7 +329,7 @@ fun LoginScreen(viewModel: MainViewModel) {
                         )
                     }
                     Text(
-                        text = "Sign in with Google",
+                        text = "Simulated Google Sign-in",
                         color = Color(0xFF1F1F1F),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,

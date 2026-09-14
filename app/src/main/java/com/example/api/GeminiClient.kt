@@ -3,6 +3,7 @@ package com.example.api
 import android.util.Log
 import com.example.BuildConfig
 import com.example.data.Flashcard
+import com.example.production.ProductionSecrets
 import com.example.data.FlashcardRatingResult
 import com.example.data.MindMapEdge
 import com.example.data.MindMapGraph
@@ -85,8 +86,7 @@ object GeminiClient {
      * Checks if a valid API key is present in the build config
      */
     fun isApiKeyAvailable(): Boolean {
-        val key = BuildConfig.GEMINI_API_KEY
-        return !key.isNullOrEmpty() && key != "MY_GEMINI_API_KEY"
+        return ProductionSecrets.isUsableGeminiKey(BuildConfig.GEMINI_API_KEY)
     }
 
     /**

@@ -89,11 +89,11 @@ service cloud.firestore {
 
       // Nested Subcollection - Flashcards inheriting tenant isolation from parent Deck
       match /cards/{cardId} {
-        allow read: if isAuthenticated() && matchesTenant(get(/databases/$(database)/documents/decks/{deckId}).data.tenantId);
+        allow read: if isAuthenticated() && matchesTenant(get(/databases/$(database)/documents/decks/$(deckId)).data.tenantId);
         
         allow write: if isAuthenticated() && 
-                     matchesTenant(get(/databases/$(database)/documents/decks/{deckId}).data.tenantId) && 
-                     (get(/databases/$(database)/documents/decks/{deckId}).data.userId == request.auth.uid || hasRole('TEACHER') || hasRole('SCHOOL_ADMIN') || hasRole('SUPER_ADMIN'));
+                     matchesTenant(get(/databases/$(database)/documents/decks/$(deckId)).data.tenantId) && 
+                     (get(/databases/$(database)/documents/decks/$(deckId)).data.userId == request.auth.uid || hasRole('TEACHER') || hasRole('SCHOOL_ADMIN') || hasRole('SUPER_ADMIN'));
       }
     }
 

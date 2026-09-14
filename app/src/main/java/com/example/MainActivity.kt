@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val viewModel: MainViewModel = viewModel()
+            viewModel.bindHostActivity(this)
             val isDarkMode by viewModel.isDarkMode.collectAsState()
             MyApplicationTheme(darkTheme = isDarkMode) {
                 NeuroLearnAppShell(viewModel)

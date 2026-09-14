@@ -1855,7 +1855,7 @@ fun MentorMatchView(viewModel: MainViewModel) {
                     }
 
                     Text(
-                        text = "Need more matching credits or instant code audits? Replenish your tokens instantly or get a subscription below:",
+                        text = "Simulation shop only. Coin packs and Premium Max do not process payments.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1904,7 +1904,7 @@ fun MentorMatchView(viewModel: MainViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                viewModel.purchaseCoins(300, 499)
+                                viewModel.purchaseCoins(350, 499)
                                 showStorefrontDialog = false
                             }
                             .testTag("buy_pack_growth")

@@ -80,7 +80,7 @@ fun EnterpriseConsoleScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Multi-Tenant Gateway • Role-Based Policies",
+                            text = "Local simulation console • Role-Based Policies",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

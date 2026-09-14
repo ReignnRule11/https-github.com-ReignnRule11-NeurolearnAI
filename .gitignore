@@ -15,4 +15,10 @@
 .cxx
 local.properties
 .env
+*.keystore
 debug.keystore
+*.jks
+keystore.properties
+google-services.json
+*-service-account.json
+**/serviceAccount*.json

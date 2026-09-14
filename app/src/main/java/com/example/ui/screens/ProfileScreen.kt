@@ -235,8 +235,8 @@ fun ProfileScreen(viewModel: MainViewModel) {
                             color = if (isPremium) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (isPremium) "Unlimited AI Matcher, Code Reviews & Smart PDF parsing" 
-                                   else "Unlock Unlimited matching with Premium Max for $9.99/mo",
+                            text = if (isPremium) "Local simulated Premium Max. Billing is not connected."
+                                   else "Simulated Premium Max unlock ($9.99/mo listed). No payment is processed.",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isPremium) MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f) 
                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
@@ -250,7 +250,7 @@ fun ProfileScreen(viewModel: MainViewModel) {
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.testTag("profile_upgrade_btn")
                             ) {
-                                Text("Upgrade to Premium Max", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                Text("Simulate Premium Max", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                             }
                         }
                     }

@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -9,9 +10,9 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-android {
+  android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.aistudio.neurolearn.kxmpzq"
@@ -24,18 +25,56 @@ android {
   }
 
   signingConfigs {
-    create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
-    }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
+    }
+    create("release") {
+      val keystorePropsFile = rootProject.file("keystore.properties")
+      val keystoreProps = Properties()
+      if (keystorePropsFile.exists()) {
+        keystorePropsFile.inputStream().use { keystoreProps.load(it) }
+      }
+      val envKeystore = System.getenv("KEYSTORE_PATH") ?: keystoreProps.getProperty("storeFile")
+      val envStorePassword = System.getenv("STORE_PASSWORD") ?: keystoreProps.getProperty("storePassword")
+      val envKeyPassword = System.getenv("KEY_PASSWORD") ?: keystoreProps.getProperty("keyPassword")
+      val envKeyAlias = System.getenv("KEY_ALIAS") ?: keystoreProps.getProperty("keyAlias") ?: "upload"
+      val allowDebugReleaseSigning = System.getenv("ALLOW_DEBUG_RELEASE_SIGNING") == "true"
+      val uploadKeystore = envKeystore?.let { path ->
+        val asFile = file(path)
+        if (asFile.isAbsolute) asFile else rootProject.file(path)
+      } ?: file("${rootDir}/my-upload-key.jks")
+      val looksLikeDebugKeystore = uploadKeystore.name.equals("debug.keystore", ignoreCase = true)
+      if (looksLikeDebugKeystore && !allowDebugReleaseSigning &&
+        gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+      ) {
+        throw GradleException(
+          "Release signing rejected debug.keystore. Provide a production upload keystore via KEYSTORE_PATH or keystore.properties."
+        )
+      }
+      if (uploadKeystore.exists() && !envStorePassword.isNullOrBlank() && !looksLikeDebugKeystore) {
+        storeFile = uploadKeystore
+        storePassword = envStorePassword
+        keyAlias = envKeyAlias
+        keyPassword = envKeyPassword ?: envStorePassword
+      } else if (allowDebugReleaseSigning) {
+        storeFile = file("${rootDir}/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      } else if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
+        throw GradleException(
+          "Release signing requires KEYSTORE_PATH and STORE_PASSWORD (or keystore.properties). " +
+            "Set ALLOW_DEBUG_RELEASE_SIGNING=true only for non-Play verification builds."
+        )
+      } else {
+        storeFile = file("${rootDir}/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
   }
 
@@ -45,9 +84,11 @@ android {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
+      buildConfigField("boolean", "PLAY_BILLING_ENABLED", "true")
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
+      buildConfigField("boolean", "PLAY_BILLING_ENABLED", "true")
     }
   }
   compileOptions {
@@ -61,6 +102,10 @@ android {
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.
 secrets {
@@ -68,8 +113,15 @@ secrets {
   defaultPropertiesFileName = ".env.example"
 }
 
+val assemblingRelease = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+val allowMissingGoogleServices = System.getenv("ALLOW_MISSING_GOOGLE_SERVICES") == "true"
 googleServices {
-  missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN
+  missingGoogleServicesStrategy =
+    if (assemblingRelease && !allowMissingGoogleServices) {
+      MissingGoogleServicesStrategy.ERROR
+    } else {
+      MissingGoogleServicesStrategy.WARN
+    }
 }
 
 
@@ -108,6 +160,7 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  implementation(libs.billing.ktx)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

@@ -144,7 +144,7 @@ object EnterpriseBackend {
     private val _activeTenant = MutableStateFlow(tenants[0])
     val activeTenant: StateFlow<Tenant> = _activeTenant
 
-    private val _activeRole = MutableStateFlow(UserRole.SUPER_ADMIN) // Default as Super Admin to let user explore all enterprise settings
+    private val _activeRole = MutableStateFlow(UserRole.STUDENT)
     val activeRole: StateFlow<UserRole> = _activeRole
 
     private val _activeLlmConfig = MutableStateFlow(LlmRouteConfig(LlmProvider.GEMINI))

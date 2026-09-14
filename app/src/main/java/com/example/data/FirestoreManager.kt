@@ -2,8 +2,8 @@ package com.example.data
 
 import android.content.Context
 import android.util.Log
+import com.example.production.FirebaseBootstrap
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,16 +51,11 @@ class FirestoreManager(context: Context) {
 
     init {
         try {
-            // Check if Firebase is initialized. If not, initialize with fallback options
+            val firebaseReady = FirebaseBootstrap.initialize(context)
             val apps = FirebaseApp.getApps(context)
-            if (apps.isEmpty()) {
-                val options = FirebaseOptions.Builder()
-                    .setApiKey("AIzaSyFakeKeyForNeuroLearnAppInitialization")
-                    .setApplicationId("1:123456789012:android:9876543210fedcba")
-                    .setProjectId("neurolearn-kxmpzq")
-                    .build()
-                FirebaseApp.initializeApp(context, options)
-                Log.d(TAG, "FirebaseApp initialized with fallback options successfully.")
+            if (!firebaseReady || apps.isEmpty()) {
+                Log.w(TAG, "FirebaseApp is not configured (missing google-services.json). Using local persistence fallback.")
+                throw IllegalStateException("Firebase is not configured")
             } else {
                 Log.d(TAG, "FirebaseApp already initialized automatically.")
             }

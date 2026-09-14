@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.app.Activity
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,12 +13,15 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.GeminiClient
+import com.example.billing.PlayBillingClient
+import com.example.billing.PlayBillingOutcome
 import com.example.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 import java.util.UUID
 
 // --- UI Navigation & Screen States ---
@@ -58,6 +62,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val TAG = "MainViewModel"
     private val database = AppDatabase.getDatabase(application)
     val firestoreManager = FirestoreManager(application)
+    private var hostActivity: WeakReference<Activity>? = null
+    private val playBillingClient = PlayBillingClient(
+        application = application,
+        onPremiumGranted = { grantPremiumLocally(fromPlayBilling = true) },
+        onCoinsGranted = { amount -> grantCoinsLocally(amount, fromPlayBilling = true) }
+    )
+
+    fun bindHostActivity(activity: Activity) {
+        hostActivity = WeakReference(activity)
+        viewModelScope.launch {
+            when (playBillingClient.restorePurchases()) {
+                is PlayBillingOutcome.Success -> {
+                    Log.d(TAG, "Restored Play Billing entitlements.")
+                }
+                is PlayBillingOutcome.Unavailable, is PlayBillingOutcome.Canceled, is PlayBillingOutcome.Error -> {
+                    Log.d(TAG, "Play Billing restore skipped or unavailable.")
+                }
+            }
+        }
+    }
     
     // DAOs
     private val profileDao = database.learnerProfileDao()
@@ -445,7 +469,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 profileDao.insertOrUpdateProfile(updatedProfile)
-                showToast(if (isSignUp) "Registered & Logged in successfully!" else "Signed in successfully!")
+                showToast(
+                    if (isSignUp) "Local account created on this device. No cloud authentication."
+                    else "Signed in locally on this device. No cloud authentication."
+                )
                 
                 // Navigate
                 if (updatedProfile.diagnosticScore > 0f) {
@@ -475,7 +502,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isLoggedIn = true
                 )
                 profileDao.insertOrUpdateProfile(updatedProfile)
-                showToast("Signed in with Google as $name!")
+                showToast("Simulated Google sign-in as $name. No Google account was contacted.")
                 
                 // Navigate
                 if (updatedProfile.diagnosticScore > 0f) {
@@ -2541,7 +2568,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _systemLogs = MutableStateFlow<List<String>>(
         listOf(
             "System Booted: NeuroLearn AI core initialized.",
-            "Database Version: 3 (Room with Fallback Destructive Migration).",
+            "Database Version: 22 (Room with Fallback Destructive Migration).",
             "Gemini Model: gemini-3.5-flash connection verified.",
             "System Audit: 12 Subjects (Calculus, CS, Chemistry, and 9 Tech Tracks) fully synchronized."
         )
@@ -4246,19 +4273,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun upgradeToPremium() {
         viewModelScope.launch {
-            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
-            val updated = currentProfile.copy(isPremium = true)
-            profileDao.insertOrUpdateProfile(updated)
-            showToast("Congratulations! You are now a NeuroLearn Premium Max member! 🎉")
+            when (val outcome = playBillingClient.purchasePremium(hostActivity?.get())) {
+                is PlayBillingOutcome.Success -> {
+                    showToast("Premium Max unlocked via Google Play.")
+                }
+                is PlayBillingOutcome.Canceled -> {
+                    showToast("Purchase canceled.")
+                }
+                is PlayBillingOutcome.Error -> {
+                    showToast("Play Billing error: ${outcome.message}")
+                }
+                is PlayBillingOutcome.Unavailable -> {
+                    grantPremiumLocally(fromPlayBilling = false)
+                    showToast("Simulation: Premium Max unlocked locally. No payment was processed.")
+                }
+            }
         }
     }
 
     fun purchaseCoins(amount: Int, priceCents: Int) {
         viewModelScope.launch {
+            when (val outcome = playBillingClient.purchaseCoins(hostActivity?.get(), amount)) {
+                is PlayBillingOutcome.Success -> {
+                    showToast("Added $amount coins via Google Play.")
+                }
+                is PlayBillingOutcome.Canceled -> {
+                    showToast("Purchase canceled.")
+                }
+                is PlayBillingOutcome.Error -> {
+                    showToast("Play Billing error: ${outcome.message}")
+                }
+                is PlayBillingOutcome.Unavailable -> {
+                    grantCoinsLocally(amount, fromPlayBilling = false)
+                    showToast("Simulation: added $amount coins (listed $${priceCents / 100.0}). No payment was processed.")
+                }
+            }
+        }
+    }
+
+    private fun grantPremiumLocally(fromPlayBilling: Boolean) {
+        viewModelScope.launch {
             val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
-            val updated = currentProfile.copy(coins = currentProfile.coins + amount)
-            profileDao.insertOrUpdateProfile(updated)
-            showToast("Successfully purchased $amount coins for $${priceCents / 100.0}! 🪙")
+            if (currentProfile.isPremium) return@launch
+            profileDao.insertOrUpdateProfile(currentProfile.copy(isPremium = true))
+            if (fromPlayBilling) {
+                Log.d(TAG, "Premium granted from Play Billing purchase.")
+            }
+        }
+    }
+
+    private fun grantCoinsLocally(amount: Int, fromPlayBilling: Boolean) {
+        viewModelScope.launch {
+            val currentProfile = profileDao.getProfileSync() ?: LearnerProfile()
+            profileDao.insertOrUpdateProfile(currentProfile.copy(coins = currentProfile.coins + amount))
+            if (fromPlayBilling) {
+                Log.d(TAG, "Granted $amount coins from Play Billing purchase.")
+            }
         }
     }
 
@@ -4400,20 +4470,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun buyCoinsPack(packName: String, coinsAmount: Int, priceUsd: Double) {
         viewModelScope.launch {
-            val currentProfile = profile.value ?: return@launch
-            val updatedProfile = currentProfile.copy(coins = currentProfile.coins + coinsAmount)
-            profileDao.insertOrUpdateProfile(updatedProfile)
-            showToast("Successfully purchased $packName! +$coinsAmount NeuroCoins added to wallet. 🪙")
+            when (val outcome = playBillingClient.purchaseCoins(hostActivity?.get(), coinsAmount)) {
+                is PlayBillingOutcome.Success -> {
+                    showToast("$packName added +$coinsAmount NeuroCoins via Google Play.")
+                }
+                is PlayBillingOutcome.Canceled -> {
+                    showToast("Purchase canceled.")
+                }
+                is PlayBillingOutcome.Error -> {
+                    showToast("Play Billing error: ${outcome.message}")
+                }
+                is PlayBillingOutcome.Unavailable -> {
+                    grantCoinsLocally(coinsAmount, fromPlayBilling = false)
+                    showToast("Simulation: $packName added +$coinsAmount NeuroCoins. No payment was processed.")
+                }
+            }
         }
     }
 
     fun upgradeToPremiumMax() {
-        viewModelScope.launch {
-            val currentProfile = profile.value ?: return@launch
-            val updatedProfile = currentProfile.copy(isPremium = true)
-            profileDao.insertOrUpdateProfile(updatedProfile)
-            showToast("👑 Welcome to NeuroLearn Premium Max! Unlimited matched sessions & marketplace.")
-        }
+        upgradeToPremium()
     }
 
     fun mintBlockchainCertificate(
